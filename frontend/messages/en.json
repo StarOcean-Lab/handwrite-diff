@@ -1,0 +1,145 @@
+{
+  "metadata": {
+    "title": "HandwriteDiff - Handwriting Diff Tool",
+    "description": "Identify differences between handwritten text and reference text"
+  },
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "reset": "Reset",
+    "download": "Download",
+    "close": "Close",
+    "confirm": "Confirm",
+    "processing": "Processing…",
+    "newTask": "+ New Task"
+  },
+  "home": {
+    "title": "Comparison Tasks",
+    "taskCount": "{total} task(s)",
+    "noTasks": "No tasks yet",
+    "noTasksHint": "Create your first comparison task to get started.",
+    "loadError": "Failed to load tasks",
+    "deleteConfirm": "Delete this task and all associated data?",
+    "deleteError": "Failed to delete task",
+    "images": "{completed}/{total} images",
+    "status": {
+      "created": "Created",
+      "processing": "Processing",
+      "completed": "Completed",
+      "failed": "Failed"
+    }
+  },
+  "newTask": {
+    "title": "New Comparison Task",
+    "taskTitle": "Task Title",
+    "taskTitlePlaceholder": "e.g., Listening Material A",
+    "ocrModel": "OCR Model",
+    "referenceText": "Reference Text",
+    "referenceTextPlaceholder": "Paste the reference text here...",
+    "fillRequired": "Please fill in both task title and reference text.",
+    "creating": "Creating...",
+    "nextUpload": "Next: Upload Images →",
+    "uploadError": "Upload failed",
+    "taskCreateError": "Failed to create task",
+    "selectImage": "Please select at least one image.",
+    "uploading": "Uploading...",
+    "uploadCount": "Upload {count} Image(s) →",
+    "back": "← Back",
+    "readyTitle": "Ready to Process",
+    "readyDesc": "Task \"{title}\" created with {count} image(s).",
+    "starting": "Starting...",
+    "startProcessing": "Start OCR Processing 🚀",
+    "startError": "Failed to start processing"
+  },
+  "taskDetail": {
+    "backToTasks": "← Back to Tasks",
+    "imageCount": "{total} image(s) · {completed} completed",
+    "referenceText": "Reference Text",
+    "processImages": "Process {count} Image(s)",
+    "processError": "Failed to start processing",
+    "savingOrder": "Saving new order...",
+    "dragHint": "Drag the handle on each card to reorder images. The diff will be recalculated automatically.",
+    "taskNotFound": "Task not found",
+    "phase": {
+      "ocr": "OCR Recognition…",
+      "ocrProgress": "OCR Recognition ({done}/{total})…",
+      "diff": "Diffing…",
+      "diffProgress": "Diffing ({done}/{total})…",
+      "annotating": "Annotating…",
+      "annotatingProgress": "Annotating ({done}/{total})…",
+      "completed": "Completed",
+      "failed": "Failed",
+      "processing": "Processing…"
+    },
+    "imageStatus": {
+      "pending": "Pending",
+      "ocr_processing": "OCR Processing",
+      "ocr_done": "OCR Done",
+      "diff_done": "Diff Done",
+      "annotated": "Annotated",
+      "reviewed": "Reviewed",
+      "failed": "Failed"
+    },
+    "noImages": "No images uploaded yet."
+  },
+  "imageReview": {
+    "back": "← Back",
+    "prev": "◀ Prev",
+    "next": "Next ▶",
+    "diffCount": "{count} diff(s)",
+    "originalImage": "Original Image",
+    "annotationEditor": "Annotation Editor",
+    "referenceText": "Reference Text",
+    "wordComparison": "Word-by-Word Comparison",
+    "live": "live",
+    "saving": "Saving...",
+    "saveCorrections": "Save Corrections",
+    "regenerateAnnotations": "Regenerate Annotations",
+    "regenerateConfirm": "This will regenerate all annotations from current OCR text. Manual edits will be lost. Continue?",
+    "exportAnnotatedImage": "Export Annotated Image",
+    "saveError": "Failed to save annotations",
+    "imageNotFound": "Image not found",
+    "noDiffData": "No diff data available."
+  },
+  "toolbar": {
+    "select": "Select",
+    "ellipse": "Ellipse",
+    "underline": "Underline",
+    "caret": "Caret",
+    "undo": "Undo",
+    "undoShortcut": "Undo (Ctrl+Z)",
+    "redo": "Redo",
+    "redoShortcut": "Redo (Ctrl+Shift+Z)",
+    "type": "Type:",
+    "wrong": "Wrong",
+    "extra": "Extra",
+    "missing": "Missing"
+  },
+  "fileUploader": {
+    "dragHint": "Drag & drop images here, or click to browse",
+    "formatHint": "Supports PNG, JPG, WEBP • Multiple files allowed",
+    "filesSelected": "{count} file(s) selected:"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "fit": "⊞ Fit",
+    "reset": "↺ Reset"
+  },
+  "ocrEditor": {
+    "title": "OCR Recognized Text",
+    "noText": "No OCR text yet"
+  },
+  "exportModal": {
+    "title": "Export Annotated Image",
+    "annotationScale": "Annotation Scale:",
+    "fontSize": "Font Size:",
+    "dragHint": "Drag annotations/labels to adjust, Ctrl+scroll to resize font",
+    "rendering": "Rendering...",
+    "downloadError": "Download failed"
+  }
+}

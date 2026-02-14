@@ -1,0 +1,145 @@
+{
+  "metadata": {
+    "title": "HandwriteDiff - 手写对比工具",
+    "description": "识别手写文本与参考文本之间的差异"
+  },
+  "common": {
+    "loading": "加载中...",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "edit": "编辑",
+    "back": "返回",
+    "reset": "重置",
+    "download": "下载",
+    "close": "关闭",
+    "confirm": "确认",
+    "processing": "处理中…",
+    "newTask": "+ 新建任务"
+  },
+  "home": {
+    "title": "对比任务",
+    "taskCount": "{total} 个任务",
+    "noTasks": "暂无任务",
+    "noTasksHint": "创建第一个对比任务开始使用。",
+    "loadError": "加载任务失败",
+    "deleteConfirm": "确认删除此任务及所有相关数据？",
+    "deleteError": "删除任务失败",
+    "images": "{completed}/{total} 张图片",
+    "status": {
+      "created": "已创建",
+      "processing": "处理中",
+      "completed": "已完成",
+      "failed": "失败"
+    }
+  },
+  "newTask": {
+    "title": "新建对比任务",
+    "taskTitle": "任务标题",
+    "taskTitlePlaceholder": "例如：听写材料 A",
+    "ocrModel": "OCR 模型",
+    "referenceText": "参考文本",
+    "referenceTextPlaceholder": "在此粘贴参考文本...",
+    "fillRequired": "请填写任务标题和参考文本。",
+    "creating": "创建中...",
+    "nextUpload": "下一步：上传图片 →",
+    "uploadError": "上传失败",
+    "taskCreateError": "创建任务失败",
+    "selectImage": "请至少选择一张图片。",
+    "uploading": "上传中...",
+    "uploadCount": "上传 {count} 张图片 →",
+    "back": "← 返回",
+    "readyTitle": "准备就绪",
+    "readyDesc": "任务「{title}」已创建，包含 {count} 张图片。",
+    "starting": "启动中...",
+    "startProcessing": "开始 OCR 处理 🚀",
+    "startError": "启动处理失败"
+  },
+  "taskDetail": {
+    "backToTasks": "← 返回任务列表",
+    "imageCount": "{total} 张图片 · {completed} 张已完成",
+    "referenceText": "参考文本",
+    "processImages": "处理 {count} 张图片",
+    "processError": "启动处理失败",
+    "savingOrder": "正在保存新顺序...",
+    "dragHint": "拖拽卡片上的手柄可以调整图片顺序。差异将自动重新计算。",
+    "taskNotFound": "任务未找到",
+    "phase": {
+      "ocr": "OCR 识别中…",
+      "ocrProgress": "OCR 识别中 ({done}/{total})…",
+      "diff": "差异对比中…",
+      "diffProgress": "差异对比中 ({done}/{total})…",
+      "annotating": "标注渲染中…",
+      "annotatingProgress": "标注渲染中 ({done}/{total})…",
+      "completed": "处理完成",
+      "failed": "处理失败",
+      "processing": "处理中…"
+    },
+    "imageStatus": {
+      "pending": "等待中",
+      "ocr_processing": "OCR 识别中",
+      "ocr_done": "OCR 完成",
+      "diff_done": "差异完成",
+      "annotated": "标注完成",
+      "reviewed": "已审阅",
+      "failed": "失败"
+    },
+    "noImages": "暂无上传的图片。"
+  },
+  "imageReview": {
+    "back": "← 返回",
+    "prev": "◀ 上一张",
+    "next": "下一张 ▶",
+    "diffCount": "{count} 处差异",
+    "originalImage": "原始图片",
+    "annotationEditor": "标注编辑器",
+    "referenceText": "参考文本",
+    "wordComparison": "逐词对比",
+    "live": "实时",
+    "saving": "保存中...",
+    "saveCorrections": "保存修正",
+    "regenerateAnnotations": "重新生成标注",
+    "regenerateConfirm": "这将从当前 OCR 文本重新生成所有标注。手动编辑将丢失。确定继续吗？",
+    "exportAnnotatedImage": "导出标注图片",
+    "saveError": "保存标注失败",
+    "imageNotFound": "图片未找到",
+    "noDiffData": "暂无差异数据。"
+  },
+  "toolbar": {
+    "select": "选择",
+    "ellipse": "椭圆",
+    "underline": "下划线",
+    "caret": "插入符号",
+    "undo": "撤销",
+    "undoShortcut": "撤销 (Ctrl+Z)",
+    "redo": "重做",
+    "redoShortcut": "重做 (Ctrl+Shift+Z)",
+    "type": "类型：",
+    "wrong": "错误",
+    "extra": "多余",
+    "missing": "缺失"
+  },
+  "fileUploader": {
+    "dragHint": "拖放图片到此处，或点击浏览",
+    "formatHint": "支持 PNG、JPG、WEBP · 可多选",
+    "filesSelected": "已选择 {count} 个文件："
+  },
+  "imageViewer": {
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "fit": "⊞ 适应",
+    "reset": "↺ 重置"
+  },
+  "ocrEditor": {
+    "title": "OCR 识别文本",
+    "noText": "暂无 OCR 文本"
+  },
+  "exportModal": {
+    "title": "导出标注图片",
+    "annotationScale": "标注缩放：",
+    "fontSize": "字体大小：",
+    "dragHint": "拖拽标注/标签调整位置，Ctrl+滚轮调整字体大小",
+    "rendering": "渲染中...",
+    "downloadError": "下载失败"
+  }
+}

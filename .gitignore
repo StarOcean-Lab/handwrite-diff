@@ -1,0 +1,41 @@
+# Dependencies
+frontend/node_modules/
+
+# Build outputs
+frontend/.next/
+frontend/out/
+
+# Python
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.venv/
+*.pyc
+*.pyo
+
+# Database
+*.db
+*.db-journal
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Storage (user uploads and generated files)
+backend/storage/uploads/
+backend/storage/annotated/
+backend/storage/exports/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
