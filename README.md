@@ -1,58 +1,58 @@
 # HandwriteDiff
 
+> [English](./README.en.md) | 中文
+
 手写文本差异识别与标注工具。上传参考文本和手写图片，自动 OCR 识别手写内容，进行逐词对比，在原图上可视化标注差异。
 
-Handwritten text difference identification and annotation tool. Upload reference text and handwritten images, automatically OCR-recognize handwritten content, perform word-level comparison, and visually mark inconsistencies on the original image.
-
-## Features
+## 功能特性
 
 - **OCR 识别** — 支持多种 Gemini 模型（Flash / Pro），通过 OpenAI 兼容接口调用
 - **逐词对比** — 基于 LCS 算法的 word-level diff，支持英文缩写展开（can't ↔ cannot）
 - **可视化标注** — 三种标注类型：红色椭圆（错误）、橙色删除线（多余）、蓝色插入符（遗漏）
 - **交互式编辑器** — SVG 叠加层支持选择、移动、缩放、新增、删除标注，Undo/Redo
-- **实时预览** — 编辑 OCR 文本时客户端即时重新 diff
+- **实时预览** — 编辑 OCR 文本时客户端即时重新计算 diff
 - **拖拽排序** — 图片支持拖拽排序，自动重新计算 diff
 - **导出** — 自定义标注缩放和字体大小，导出标注图片
 - **双语界面** — 中文 / English 一键切换
 
-## Architecture
+## 项目结构
 
 ```
 handwrite-diff/
 ├── backend/          FastAPI + SQLAlchemy + Gemini OCR
 │   ├── app/
-│   │   ├── main.py           # FastAPI entry, lifespan, CORS
-│   │   ├── config.py         # pydantic-settings (.env)
+│   │   ├── main.py           # FastAPI 入口、生命周期、CORS
+│   │   ├── config.py         # pydantic-settings 配置（.env）
 │   │   ├── database.py       # SQLite + async SQLAlchemy
-│   │   ├── models/           # ORM: ComparisonTask, ImageRecord, WordAnnotation
-│   │   ├── schemas/          # Pydantic v2 request/response DTOs
-│   │   ├── routers/          # /api/v1/ routes
+│   │   ├── models/           # ORM 模型：ComparisonTask, ImageRecord, WordAnnotation
+│   │   ├── schemas/          # Pydantic v2 请求/响应 DTO
+│   │   ├── routers/          # /api/v1/ 路由
 │   │   └── services/
-│   │       ├── ocr_service.py    # Gemini vision OCR (word-level)
-│   │       ├── diff_engine.py    # SequenceMatcher word diff
-│   │       ├── annotator.py      # OpenCV annotation rendering
-│   │       └── pipeline.py       # Processing orchestration
-│   ├── storage/              # Runtime: uploads/ + annotated/
+│   │       ├── ocr_service.py    # Gemini Vision OCR（词级别）
+│   │       ├── diff_engine.py    # SequenceMatcher 逐词对比
+│   │       ├── annotator.py      # OpenCV 图像标注渲染
+│   │       └── pipeline.py       # 处理流水线编排
+│   ├── storage/              # 运行时存储：uploads/ + annotated/
 │   └── tests/
 ├── frontend/         Next.js 15 + React 19 + Tailwind v4
-│   ├── app/                  # App Router pages
-│   ├── components/           # UI components
-│   ├── i18n/                 # next-intl config
-│   ├── messages/             # zh.json + en.json
-│   ├── hooks/                # usePolling
-│   └── lib/                  # api client, diff engine, overlap resolver
+│   ├── app/                  # App Router 页面
+│   ├── components/           # UI 组件
+│   ├── i18n/                 # next-intl 国际化配置
+│   ├── messages/             # zh.json + en.json 翻译文件
+│   ├── hooks/                # usePolling 等自定义 Hook
+│   └── lib/                  # API 客户端、diff 引擎、标签重叠解算
 └── README.md
 ```
 
-## Quick Start
+## 快速开始
 
-### Prerequisites
+### 前置条件
 
 - Python 3.12+
 - Node.js 18+
 - Gemini API Key（通过 OpenAI 兼容接口）
 
-### Backend
+### 后端
 
 ```bash
 cd backend
@@ -66,13 +66,13 @@ pip install -r requirements.txt
 
 # 配置环境变量
 cp .env.example .env
-# 编辑 .env 填入你的 Gemini API Key 和 endpoint
+# 编辑 .env 填入你的 Gemini API Key 和接口地址
 
 # 启动开发服务器
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
 
-### Frontend
+### 前端
 
 ```bash
 cd frontend
@@ -80,23 +80,23 @@ cd frontend
 # 安装依赖
 npm install
 
-# 启动开发服务器 (Turbopack)
+# 启动开发服务器（Turbopack）
 npm run dev
 ```
 
-打开 http://localhost:3000 即可使用。Frontend 通过 Next.js rewrites 自动代理 `/api/*` 到 backend `:8001`。
+打开 http://localhost:3000 即可使用。前端通过 Next.js rewrites 自动代理 `/api/*` 到后端 `:8001`。
 
-### Environment Variables
+### 环境变量
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
+| 变量 | 必填 | 默认值 | 说明 |
+|------|------|--------|------|
 | `GEMINI_API_KEY` | ✅ | — | Gemini API 密钥 |
 | `GEMINI_BASE_URL` | ✅ | — | OpenAI 兼容接口地址（如 `https://yunwu.ai`） |
 | `GEMINI_MODEL` | — | `gemini-2.5-flash` | OCR 使用的模型 |
 | `GEMINI_TIMEOUT` | — | `120` | API 请求超时（秒） |
 | `DATABASE_URL` | — | `sqlite+aiosqlite:///./handwrite_diff.db` | 数据库连接字符串 |
 
-## Workflow
+## 使用流程
 
 1. **创建任务** — 输入标题，粘贴参考文本，选择 OCR 模型
 2. **上传图片** — 拖拽上传一张或多张手写图片
@@ -110,34 +110,34 @@ npm run dev
    - 重新生成标注
    - 导出标注图片（可调整缩放和字体）
 
-## Annotation Types
+## 标注类型
 
-| Type | Visual | Meaning |
-|------|--------|---------|
-| **WRONG** | 🔴 Red ellipse + correct word label | OCR 词与参考文本不一致 |
-| **EXTRA** | 🟠 Orange strikethrough | 图片中有但参考文本中没有 |
-| **MISSING** | 🔵 Blue caret (^) + missing word label | 参考文本中有但图片中没有 |
+| 类型 | 外观 | 含义 |
+|------|------|------|
+| **WRONG** | 🔴 红色椭圆 + 正确词标签 | OCR 词与参考文本不一致 |
+| **EXTRA** | 🟠 橙色删除线 | 图片中有但参考文本中没有 |
+| **MISSING** | 🔵 蓝色插入符 (^) + 遗漏词标签 | 参考文本中有但图片中没有 |
 
-## Processing Pipeline
+## 处理流水线
 
 ```
-Upload Image
+上传图片
     ↓
-OCR (Gemini Vision API)
-    ↓ word-level bounding boxes
-Word Diff (LCS + contraction handling)
-    ↓ DiffOp list: CORRECT / WRONG / EXTRA / MISSING
-Annotation Rendering (OpenCV)
-    ↓ annotated JPG
-Persist to DB (WordAnnotation records)
+OCR 识别（Gemini Vision API）
+    ↓ 词级别边界框
+逐词对比（LCS + 缩写展开）
+    ↓ DiffOp 列表：CORRECT / WRONG / EXTRA / MISSING
+标注渲染（OpenCV）
+    ↓ 标注后的 JPG 图片
+持久化到数据库（WordAnnotation 记录）
 ```
 
-Each step updates `ImageRecord.status`, enabling real-time progress polling from the frontend.
+每个步骤都会更新 `ImageRecord.status`，前端可实时轮询处理进度。
 
-## API Endpoints
+## API 接口
 
-| Method | Path | Description |
-|--------|------|-------------|
+| 方法 | 路径 | 说明 |
+|------|------|------|
 | `POST` | `/api/v1/tasks` | 创建对比任务 |
 | `GET` | `/api/v1/tasks` | 任务列表（分页） |
 | `GET` | `/api/v1/tasks/{id}` | 任务详情 |
@@ -147,7 +147,7 @@ Each step updates `ImageRecord.status`, enabling real-time progress polling from
 | `PUT` | `/api/v1/tasks/{id}/images/reorder` | 图片排序 |
 | `GET` | `/api/v1/images/{id}` | 图片详情 + 标注 |
 | `GET` | `/api/v1/images/{id}/original` | 原始图片 |
-| `GET` | `/api/v1/images/{id}/annotated` | 标注图片 |
+| `GET` | `/api/v1/images/{id}/annotated` | 标注后图片 |
 | `PATCH` | `/api/v1/images/{id}/ocr` | 修正 OCR 文本 |
 | `PUT` | `/api/v1/images/{id}/annotations` | 替换全部标注 |
 | `POST` | `/api/v1/images/{id}/annotations` | 添加单条标注 |
@@ -157,32 +157,32 @@ Each step updates `ImageRecord.status`, enabling real-time progress polling from
 | `POST` | `/api/v1/images/{id}/regenerate` | 重新 diff + 标注 |
 | `POST` | `/api/v1/images/{id}/export` | 导出标注图片 |
 
-## Tech Stack
+## 技术栈
 
-### Backend
+### 后端
 
-| Technology | Purpose |
-|------------|---------|
-| [FastAPI](https://fastapi.tiangolo.com/) | Async web framework |
-| [SQLAlchemy](https://www.sqlalchemy.org/) 2.0 (async) | ORM + database |
-| [aiosqlite](https://github.com/omnilib/aiosqlite) | Async SQLite driver |
-| [OpenAI SDK](https://github.com/openai/openai-python) | Gemini API (兼容接口) |
-| [OpenCV](https://opencv.org/) | Image annotation rendering |
-| [Pillow](https://pillow.readthedocs.io/) | Image processing |
-| [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) | Configuration management |
+| 技术 | 用途 |
+|------|------|
+| [FastAPI](https://fastapi.tiangolo.com/) | 异步 Web 框架 |
+| [SQLAlchemy](https://www.sqlalchemy.org/) 2.0 (async) | ORM + 数据库 |
+| [aiosqlite](https://github.com/omnilib/aiosqlite) | 异步 SQLite 驱动 |
+| [OpenAI SDK](https://github.com/openai/openai-python) | Gemini API（兼容接口） |
+| [OpenCV](https://opencv.org/) | 图像标注渲染 |
+| [Pillow](https://pillow.readthedocs.io/) | 图像处理 |
+| [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) | 配置管理 |
 
-### Frontend
+### 前端
 
-| Technology | Purpose |
-|------------|---------|
-| [Next.js](https://nextjs.org/) 15 (App Router, Turbopack) | React framework |
-| [React](https://react.dev/) 19 | UI library |
-| [Tailwind CSS](https://tailwindcss.com/) v4 | Styling |
-| [next-intl](https://next-intl-docs.vercel.app/) | i18n (中/英双语) |
-| [@dnd-kit](https://dndkit.com/) | Drag-and-drop sorting |
-| [react-dropzone](https://react-dropzone.js.org/) | File upload |
+| 技术 | 用途 |
+|------|------|
+| [Next.js](https://nextjs.org/) 15 (App Router, Turbopack) | React 框架 |
+| [React](https://react.dev/) 19 | UI 库 |
+| [Tailwind CSS](https://tailwindcss.com/) v4 | 样式 |
+| [next-intl](https://next-intl-docs.vercel.app/) | 国际化（中/英双语） |
+| [@dnd-kit](https://dndkit.com/) | 拖拽排序 |
+| [react-dropzone](https://react-dropzone.js.org/) | 文件上传 |
 
-## Testing
+## 测试
 
 ```bash
 cd backend
@@ -199,17 +199,17 @@ pytest tests/test_diff_engine.py::TestComputeWordDiff::test_single_replacement -
 
 测试不依赖 GPU 或 Gemini API — `test_diff_engine.py` 和 `test_annotator.py` 使用合成数据测试纯逻辑。
 
-## i18n
+## 国际化
 
 界面支持中文和英文双语切换，基于 [next-intl](https://next-intl-docs.vercel.app/) 实现：
 
 - 默认语言：中文（zh）
 - 切换方式：Header 右上角语言按钮
-- 持久化：Cookie 存储，刷新不丢失
+- 持久化：Cookie 存储，刷新后语言偏好保持
 - 无 URL 前缀：不改变路由结构
 
 翻译文件位于 `frontend/messages/zh.json` 和 `frontend/messages/en.json`。
 
-## License
+## 许可证
 
 MIT
