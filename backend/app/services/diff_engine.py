@@ -34,8 +34,13 @@ def _normalize(word: str) -> str:
 
 
 def normalize_word_list(text: str) -> list[str]:
-    """Split text into normalized word list."""
-    return [_normalize(w) for w in text.split() if _normalize(w)]
+    """Split text into word list, stripping edge punctuation but preserving original case."""
+    result: list[str] = []
+    for w in text.split():
+        cleaned = re.sub(r"^[^\w]+|[^\w]+$", "", w)
+        if cleaned:
+            result.append(cleaned)
+    return result
 
 
 # ---------------------------------------------------------------------------

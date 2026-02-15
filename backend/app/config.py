@@ -3,6 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -18,8 +19,18 @@ class Settings(BaseSettings):
     upload_dir: Path = Path("storage/uploads")
     annotated_dir: Path = Path("storage/annotated")
 
-    # CORS
+    # CORS - supports both JSON array and comma-separated string
     cors_origins: list[str] = ["http://localhost:3000"]
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_cors_origins(cls, values):
+        if "cors_origins" in values and isinstance(values["cors_origins"], str):
+            # Support comma-separated string format
+            values["cors_origins"] = [
+                origin.strip() for origin in values["cors_origins"].split(",") if origin.strip()
+            ]
+        return values
 
     # Gemini OCR settings (via OpenAI-compatible API)
     gemini_api_key: str = ""

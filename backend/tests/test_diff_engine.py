@@ -7,16 +7,16 @@ from app.services.diff_engine import DiffOp, DiffType, compute_word_diff, normal
 
 class TestNormalizeWordList:
     def test_basic(self) -> None:
-        assert normalize_word_list("The cat sat") == ["the", "cat", "sat"]
+        assert normalize_word_list("The cat sat") == ["The", "cat", "sat"]
 
     def test_strips_punctuation(self) -> None:
-        assert normalize_word_list("Hello, world!") == ["hello", "world"]
+        assert normalize_word_list("Hello, world!") == ["Hello", "world"]
 
     def test_empty_string(self) -> None:
         assert normalize_word_list("") == []
 
-    def test_mixed_case(self) -> None:
-        assert normalize_word_list("The CAT Sat") == ["the", "cat", "sat"]
+    def test_preserves_case(self) -> None:
+        assert normalize_word_list("The CAT Sat") == ["The", "CAT", "Sat"]
 
 
 class TestComputeWordDiff:

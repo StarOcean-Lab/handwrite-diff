@@ -59,7 +59,7 @@ async def test_create_and_get_task(client: AsyncClient) -> None:
 
     resp = await client.get(f"/api/v1/tasks/{task_id}")
     assert resp.status_code == 200
-    assert resp.json()["reference_words"] == ["the", "cat", "sat", "on", "the", "mat"]
+    assert resp.json()["reference_words"] == ["The", "cat", "sat", "on", "the", "mat"]
 
 
 @pytest.mark.asyncio

@@ -14,11 +14,11 @@ router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
 
 def _normalize_words(text: str) -> list[str]:
-    """Normalize reference text into a word list (lowercase, strip punctuation edges)."""
+    """Split reference text into a word list, stripping edge punctuation but preserving case."""
     raw_words = text.split()
     result: list[str] = []
     for w in raw_words:
-        cleaned = re.sub(r"^[^\w]+|[^\w]+$", "", w.lower())
+        cleaned = re.sub(r"^[^\w]+|[^\w]+$", "", w)
         if cleaned:
             result.append(cleaned)
     return result
