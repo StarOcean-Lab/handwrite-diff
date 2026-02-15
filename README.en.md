@@ -96,6 +96,73 @@ Open http://localhost:3000 in your browser. The frontend proxies `/api/*` to the
 | `GEMINI_TIMEOUT` | — | `120` | API request timeout (seconds) |
 | `DATABASE_URL` | — | `sqlite+aiosqlite:///./handwrite_diff.db` | Database connection string |
 
+## Docker Deployment
+
+### Quick Start
+
+```bash
+# 1. Copy and edit environment variables
+cp .env.example .env
+# Edit .env with your GEMINI_API_KEY and GEMINI_BASE_URL
+
+# 2. Build and start
+docker compose up -d
+
+# 3. View logs
+docker compose logs -f
+```
+
+Once running, open http://localhost:3002 (backend API on `:8001`).
+
+### Architecture
+
+```
+┌─────────────┐     ┌──────────────┐
+│  frontend   │────▶│   backend    │
+│  :3002→3000 │ API │   :8001      │
+│  Next.js    │     │   FastAPI    │
+└─────────────┘     └──────┬───────┘
+                           │
+                    ┌──────▼───────┐
+                    │   SQLite DB  │
+                    │  + storage/  │
+                    │  (Volume)    │
+                    └──────────────┘
+```
+
+- **frontend** — Next.js standalone mode, `API_URL=http://backend:8001` injected at build time, communicates with backend via Docker internal network
+- **backend** — Multi-stage Python 3.13 image, runs as non-root user with health checks
+- **Persistence** — `backend-storage` Docker Volume stores uploaded images, annotated images, and SQLite database
+
+### Docker Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEMINI_API_KEY` | — | Gemini API key (required) |
+| `GEMINI_BASE_URL` | — | OpenAI-compatible endpoint (required) |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | OCR model |
+| `CORS_ORIGINS` | `http://localhost:3000` | Allowed CORS origins, comma-separated |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./handwrite_diff.db` | Database connection |
+
+### Common Commands
+
+```bash
+# Rebuild after code changes
+docker compose up -d --build
+
+# Stop services
+docker compose down
+
+# Stop and remove data volumes (⚠️ deletes all uploads and database)
+docker compose down -v
+
+# Check service status
+docker compose ps
+
+# Shell into backend container
+docker compose exec backend bash
+```
+
 ## Workflow
 
 1. **Create Task** — Enter a title, paste reference text, select OCR model

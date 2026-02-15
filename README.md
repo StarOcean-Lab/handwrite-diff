@@ -96,6 +96,73 @@ npm run dev
 | `GEMINI_TIMEOUT` | — | `120` | API 请求超时（秒） |
 | `DATABASE_URL` | — | `sqlite+aiosqlite:///./handwrite_diff.db` | 数据库连接字符串 |
 
+## Docker 部署
+
+### 快速启动
+
+```bash
+# 1. 复制并编辑环境变量
+cp .env.example .env
+# 编辑 .env，填入 GEMINI_API_KEY 和 GEMINI_BASE_URL
+
+# 2. 构建并启动
+docker compose up -d
+
+# 3. 查看日志
+docker compose logs -f
+```
+
+启动后访问 http://localhost:3002 即可使用（后端 API 在 `:8001`）。
+
+### 架构说明
+
+```
+┌─────────────┐     ┌──────────────┐
+│  frontend   │────▶│   backend    │
+│  :3002→3000 │ API │   :8001      │
+│  Next.js    │     │   FastAPI    │
+└─────────────┘     └──────┬───────┘
+                           │
+                    ┌──────▼───────┐
+                    │   SQLite DB  │
+                    │  + storage/  │
+                    │  (Volume)    │
+                    └──────────────┘
+```
+
+- **frontend** — Next.js standalone 模式，构建时注入 `API_URL=http://backend:8001`，通过 Docker 内部网络访问后端
+- **backend** — 多阶段构建的 Python 3.13 镜像，非 root 用户运行，带健康检查
+- **数据持久化** — `backend-storage` Docker Volume 保存上传图片、标注图片和 SQLite 数据库
+
+### Docker 相关环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `GEMINI_API_KEY` | — | Gemini API 密钥（必填） |
+| `GEMINI_BASE_URL` | — | OpenAI 兼容接口地址（必填） |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | OCR 模型 |
+| `CORS_ORIGINS` | `http://localhost:3000` | CORS 允许的来源，逗号分隔 |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./handwrite_diff.db` | 数据库连接 |
+
+### 常用命令
+
+```bash
+# 重新构建（代码更新后）
+docker compose up -d --build
+
+# 停止服务
+docker compose down
+
+# 停止并清除数据卷（⚠️ 会删除所有上传和数据库）
+docker compose down -v
+
+# 查看服务状态
+docker compose ps
+
+# 进入后端容器调试
+docker compose exec backend bash
+```
+
 ## 使用流程
 
 1. **创建任务** — 输入标题，粘贴参考文本，选择 OCR 模型
