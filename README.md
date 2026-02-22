@@ -6,13 +6,15 @@
 
 ## 功能特性
 
-- **OCR 识别** — 支持多种 Gemini 模型（Flash / Pro），通过 OpenAI 兼容接口调用
-- **逐词对比** — 基于 LCS 算法的 word-level diff，支持英文缩写展开（can't ↔ cannot）
+- **多提供商 OCR** — 界面管理多个 OpenAI 兼容 OCR 提供商（API Key、模型列表），支持按任务选择提供商和覆盖模型
+- **图像预处理** — 自动纠偏（Hough 直线检测）+ CLAHE 对比度增强，提升 OCR 精度
+- **词级 bbox 精化** — 自适应阈值收紧粗糙的 OCR 边界框
+- **逐词对比** — 基于 LCS 算法的 word-level diff，支持英文缩写展开（can't ↔ cannot）和数字等价（"two" == "2"）
 - **可视化标注** — 三种标注类型：红色椭圆（错误）、橙色删除线（多余）、蓝色插入符（遗漏）
 - **交互式编辑器** — SVG 叠加层支持选择、移动、缩放、新增、删除标注，Undo/Redo
 - **实时预览** — 编辑 OCR 文本时客户端即时重新计算 diff
 - **拖拽排序** — 图片支持拖拽排序，自动重新计算 diff
-- **导出** — 自定义标注缩放和字体大小，导出标注图片
+- **批量导出** — 已完成任务一键下载全部标注图 ZIP；单张图片支持自定义标注缩放和字体导出
 - **双语界面** — 中文 / English 一键切换
 
 ## 项目结构
@@ -24,18 +26,20 @@ handwrite-diff/
 │   │   ├── main.py           # FastAPI 入口、生命周期、CORS
 │   │   ├── config.py         # pydantic-settings 配置（.env）
 │   │   ├── database.py       # SQLite + async SQLAlchemy
-│   │   ├── models/           # ORM 模型：ComparisonTask, ImageRecord, WordAnnotation
+│   │   ├── models/           # ORM：ModelProvider, ComparisonTask, ImageRecord, WordAnnotation
 │   │   ├── schemas/          # Pydantic v2 请求/响应 DTO
-│   │   ├── routers/          # /api/v1/ 路由
+│   │   ├── routers/          # /api/v1/ 路由（tasks, images, providers）
 │   │   └── services/
 │   │       ├── ocr_service.py    # Gemini Vision OCR（词级别）
+│   │       ├── preprocessing.py  # 图像预处理（纠偏 + CLAHE）
+│   │       ├── bbox_refiner.py   # OCR bbox 自适应精化
 │   │       ├── diff_engine.py    # SequenceMatcher 逐词对比
 │   │       ├── annotator.py      # OpenCV 图像标注渲染
 │   │       └── pipeline.py       # 处理流水线编排
 │   ├── storage/              # 运行时存储：uploads/ + annotated/
 │   └── tests/
 ├── frontend/         Next.js 15 + React 19 + Tailwind v4
-│   ├── app/                  # App Router 页面
+│   ├── app/                  # App Router 页面（/、/new、/tasks、/providers）
 │   ├── components/           # UI 组件
 │   ├── i18n/                 # next-intl 国际化配置
 │   ├── messages/             # zh.json + en.json 翻译文件
@@ -90,23 +94,25 @@ npm run dev
 
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `GEMINI_API_KEY` | ✅ | — | Gemini API 密钥 |
+| `GEMINI_API_KEY` | ✅ | — | 全局 Gemini API 密钥（提供商管理可覆盖） |
 | `GEMINI_BASE_URL` | ✅ | — | OpenAI 兼容接口地址（如 `https://yunwu.ai`） |
-| `GEMINI_MODEL` | — | `gemini-2.5-flash` | OCR 使用的模型 |
+| `GEMINI_MODEL` | — | `gemini-2.5-flash` | 全局默认 OCR 模型 |
 | `GEMINI_TIMEOUT` | — | `120` | API 请求超时（秒） |
 | `DATABASE_URL` | — | `sqlite+aiosqlite:///./handwrite_diff.db` | 数据库连接字符串 |
+
+> 通过「模型提供商」管理页面配置的提供商会覆盖以上全局 `.env` 配置，实现多账号/多端点管理。
 
 ## Docker 部署
 
 ### 快速启动
 
 ```bash
-# 1. 复制并编辑环境变量
+# 1. 复制并编辑环境变量（放置在仓库根目录）
 cp .env.example .env
 # 编辑 .env，填入 GEMINI_API_KEY 和 GEMINI_BASE_URL
 
 # 2. 构建并启动
-docker compose up -d
+docker compose up --build -d
 
 # 3. 查看日志
 docker compose logs -f
@@ -134,21 +140,15 @@ docker compose logs -f
 - **backend** — 多阶段构建的 Python 3.13 镜像，非 root 用户运行，带健康检查
 - **数据持久化** — `backend-storage` Docker Volume 保存上传图片、标注图片和 SQLite 数据库
 
-### Docker 相关环境变量
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `GEMINI_API_KEY` | — | Gemini API 密钥（必填） |
-| `GEMINI_BASE_URL` | — | OpenAI 兼容接口地址（必填） |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | OCR 模型 |
-| `CORS_ORIGINS` | `http://localhost:3000` | CORS 允许的来源，逗号分隔 |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./handwrite_diff.db` | 数据库连接 |
-
 ### 常用命令
 
 ```bash
-# 重新构建（代码更新后）
-docker compose up -d --build
+# 重新构建（代码更新后必须执行）
+docker compose up --build -d
+
+# 仅重建某一服务
+docker compose up --build -d backend
+docker compose up --build -d frontend
 
 # 停止服务
 docker compose down
@@ -165,17 +165,19 @@ docker compose exec backend bash
 
 ## 使用流程
 
-1. **创建任务** — 输入标题，粘贴参考文本，选择 OCR 模型
-2. **上传图片** — 拖拽上传一张或多张手写图片
-3. **处理** — 触发 OCR → Diff → Annotation 流水线（实时进度轮询）
-4. **审阅** — 交互式标注编辑器：
+1. **配置提供商**（可选）— 前往「模型提供商」页面添加 OCR API 提供商，设置为默认；也可直接使用 `.env` 全局配置
+2. **创建任务** — 输入标题，粘贴参考文本，选择提供商和 OCR 模型（可选覆盖）
+3. **上传图片** — 拖拽上传一张或多张手写图片
+4. **处理** — 触发 OCR → Diff → Annotation 流水线（实时进度轮询）
+5. **审阅** — 交互式标注编辑器：
    - 缩放/平移图片查看器
    - SVG 叠加标注（椭圆、下划线、插入符）
    - 选择、移动、缩放、新增、删除标注
    - Undo/Redo（Ctrl+Z / Ctrl+Shift+Z）
    - 编辑 OCR 文本并实时预览 diff
    - 重新生成标注
-   - 导出标注图片（可调整缩放和字体）
+   - 导出单张标注图片（可调整缩放和字体）
+6. **批量导出** — 任务完成后在详情页点击「导出全部标注图」下载 ZIP
 
 ## 标注类型
 
@@ -190,25 +192,36 @@ docker compose exec backend bash
 ```
 上传图片
     ↓
+预处理（自动纠偏 + CLAHE 对比度增强）
+    ↓
 OCR 识别（Gemini Vision API）
     ↓ 词级别边界框
-逐词对比（LCS + 缩写展开）
+Bbox 精化（自适应阈值收紧边界框）
+    ↓
+逐词对比（LCS + 缩写展开，全图片拼接后单次 diff）
     ↓ DiffOp 列表：CORRECT / WRONG / EXTRA / MISSING
 标注渲染（OpenCV）
     ↓ 标注后的 JPG 图片
 持久化到数据库（WordAnnotation 记录）
 ```
 
-每个步骤都会更新 `ImageRecord.status`，前端可实时轮询处理进度。
+每个步骤都会更新 `ImageRecord.status`，前端可实时轮询处理进度。CPU 密集步骤（预处理、精化、渲染）通过 `asyncio.to_thread` 在线程池中执行，不阻塞事件循环。
 
 ## API 接口
+
+### 任务与图片
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `POST` | `/api/v1/tasks` | 创建对比任务 |
 | `GET` | `/api/v1/tasks` | 任务列表（分页） |
 | `GET` | `/api/v1/tasks/{id}` | 任务详情 |
+| `PATCH` | `/api/v1/tasks/{id}` | 更新参考文本并重新 diff |
 | `DELETE` | `/api/v1/tasks/{id}` | 删除任务 |
+| `POST` | `/api/v1/tasks/{id}/process` | 触发 OCR 处理 |
+| `GET` | `/api/v1/tasks/{id}/progress` | 处理进度 |
+| `GET` | `/api/v1/tasks/{id}/stats` | 准确率统计 |
+| `GET` | `/api/v1/tasks/{id}/export-zip` | 下载全部标注图 ZIP |
 | `POST` | `/api/v1/tasks/{id}/images` | 上传图片 |
 | `GET` | `/api/v1/tasks/{id}/images` | 任务图片列表 |
 | `PUT` | `/api/v1/tasks/{id}/images/reorder` | 图片排序 |
@@ -219,10 +232,20 @@ OCR 识别（Gemini Vision API）
 | `PUT` | `/api/v1/images/{id}/annotations` | 替换全部标注 |
 | `POST` | `/api/v1/images/{id}/annotations` | 添加单条标注 |
 | `DELETE` | `/api/v1/images/{id}/annotations/{aid}` | 删除标注 |
-| `POST` | `/api/v1/tasks/{id}/process` | 触发 OCR 处理 |
-| `GET` | `/api/v1/tasks/{id}/progress` | 处理进度 |
 | `POST` | `/api/v1/images/{id}/regenerate` | 重新 diff + 标注 |
-| `POST` | `/api/v1/images/{id}/export` | 导出标注图片 |
+| `POST` | `/api/v1/images/{id}/render-export` | 渲染导出图（自定义标注） |
+
+### 模型提供商
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/v1/providers` | 提供商列表 |
+| `POST` | `/api/v1/providers` | 创建提供商 |
+| `PATCH` | `/api/v1/providers/{id}` | 编辑提供商 |
+| `DELETE` | `/api/v1/providers/{id}` | 删除提供商 |
+| `POST` | `/api/v1/providers/{id}/set-default` | 设为默认提供商 |
+| `POST` | `/api/v1/providers/{id}/test-models` | 测试已存储凭据 |
+| `POST` | `/api/v1/providers/test` | 测试临时凭据（不保存） |
 
 ## 技术栈
 
@@ -234,7 +257,7 @@ OCR 识别（Gemini Vision API）
 | [SQLAlchemy](https://www.sqlalchemy.org/) 2.0 (async) | ORM + 数据库 |
 | [aiosqlite](https://github.com/omnilib/aiosqlite) | 异步 SQLite 驱动 |
 | [OpenAI SDK](https://github.com/openai/openai-python) | Gemini API（兼容接口） |
-| [OpenCV](https://opencv.org/) | 图像标注渲染 |
+| [OpenCV](https://opencv.org/) | 图像标注渲染 + bbox 精化 |
 | [Pillow](https://pillow.readthedocs.io/) | 图像处理 |
 | [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) | 配置管理 |
 

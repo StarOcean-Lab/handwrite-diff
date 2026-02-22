@@ -6,13 +6,15 @@ A handwriting comparison tool that identifies differences between handwritten te
 
 ## Features
 
-- **OCR Recognition** — Multiple Gemini models (Flash / Pro) via OpenAI-compatible API
-- **Word-Level Diff** — LCS-based comparison with English contraction expansion (can't ↔ cannot)
+- **Multi-Provider OCR** — Manage multiple OpenAI-compatible OCR providers (API keys, model lists) via UI; select provider and override model per task
+- **Image Preprocessing** — Auto-deskew (Hough line detection) + CLAHE contrast enhancement for better OCR accuracy
+- **Bbox Refinement** — Adaptive thresholding to tighten coarse OCR bounding boxes
+- **Word-Level Diff** — LCS-based comparison with contraction expansion (can't ↔ cannot) and number equivalence ("two" == "2")
 - **Visual Annotations** — Three types: red ellipse (wrong), orange strikethrough (extra), blue caret (missing)
 - **Interactive Editor** — SVG overlay with select, move, resize, create, delete annotations, Undo/Redo
 - **Live Preview** — Client-side real-time diff recomputation while editing OCR text
 - **Drag & Drop Sorting** — Reorder images with automatic diff recalculation
-- **Export** — Customizable annotation scale and font size for exported images
+- **Batch Export** — One-click ZIP download of all annotated images for a completed task; single-image export with customizable scale and font
 - **Bilingual UI** — Chinese / English toggle
 
 ## Architecture
@@ -24,18 +26,20 @@ handwrite-diff/
 │   │   ├── main.py           # FastAPI entry, lifespan, CORS
 │   │   ├── config.py         # pydantic-settings (.env)
 │   │   ├── database.py       # SQLite + async SQLAlchemy
-│   │   ├── models/           # ORM: ComparisonTask, ImageRecord, WordAnnotation
+│   │   ├── models/           # ORM: ModelProvider, ComparisonTask, ImageRecord, WordAnnotation
 │   │   ├── schemas/          # Pydantic v2 request/response DTOs
-│   │   ├── routers/          # /api/v1/ routes
+│   │   ├── routers/          # /api/v1/ routes (tasks, images, providers)
 │   │   └── services/
 │   │       ├── ocr_service.py    # Gemini Vision OCR (word-level)
+│   │       ├── preprocessing.py  # Image preprocessing (deskew + CLAHE)
+│   │       ├── bbox_refiner.py   # Adaptive bbox tightening
 │   │       ├── diff_engine.py    # SequenceMatcher word diff
 │   │       ├── annotator.py      # OpenCV annotation rendering
 │   │       └── pipeline.py       # Processing orchestration
 │   ├── storage/              # Runtime: uploads/ + annotated/
 │   └── tests/
 ├── frontend/         Next.js 15 + React 19 + Tailwind v4
-│   ├── app/                  # App Router pages
+│   ├── app/                  # App Router pages (/, /new, /tasks, /providers)
 │   ├── components/           # UI components
 │   ├── i18n/                 # next-intl config
 │   ├── messages/             # zh.json + en.json
@@ -90,23 +94,25 @@ Open http://localhost:3000 in your browser. The frontend proxies `/api/*` to the
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GEMINI_API_KEY` | ✅ | — | Gemini API key |
+| `GEMINI_API_KEY` | ✅ | — | Global Gemini API key (overridable via Provider Management) |
 | `GEMINI_BASE_URL` | ✅ | — | OpenAI-compatible endpoint (e.g. `https://yunwu.ai`) |
-| `GEMINI_MODEL` | — | `gemini-2.5-flash` | Model for OCR |
+| `GEMINI_MODEL` | — | `gemini-2.5-flash` | Global default OCR model |
 | `GEMINI_TIMEOUT` | — | `120` | API request timeout (seconds) |
 | `DATABASE_URL` | — | `sqlite+aiosqlite:///./handwrite_diff.db` | Database connection string |
+
+> Providers configured via the Provider Management page override the global `.env` settings, enabling multi-account / multi-endpoint setups.
 
 ## Docker Deployment
 
 ### Quick Start
 
 ```bash
-# 1. Copy and edit environment variables
+# 1. Copy and edit environment variables (place at repo root)
 cp .env.example .env
 # Edit .env with your GEMINI_API_KEY and GEMINI_BASE_URL
 
 # 2. Build and start
-docker compose up -d
+docker compose up --build -d
 
 # 3. View logs
 docker compose logs -f
@@ -134,21 +140,15 @@ Once running, open http://localhost:3002 (backend API on `:8001`).
 - **backend** — Multi-stage Python 3.13 image, runs as non-root user with health checks
 - **Persistence** — `backend-storage` Docker Volume stores uploaded images, annotated images, and SQLite database
 
-### Docker Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GEMINI_API_KEY` | — | Gemini API key (required) |
-| `GEMINI_BASE_URL` | — | OpenAI-compatible endpoint (required) |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | OCR model |
-| `CORS_ORIGINS` | `http://localhost:3000` | Allowed CORS origins, comma-separated |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./handwrite_diff.db` | Database connection |
-
 ### Common Commands
 
 ```bash
-# Rebuild after code changes
-docker compose up -d --build
+# Rebuild after code changes (required every time)
+docker compose up --build -d
+
+# Rebuild a single service only
+docker compose up --build -d backend
+docker compose up --build -d frontend
 
 # Stop services
 docker compose down
@@ -165,17 +165,19 @@ docker compose exec backend bash
 
 ## Workflow
 
-1. **Create Task** — Enter a title, paste reference text, select OCR model
-2. **Upload Images** — Drag & drop one or more handwritten images
-3. **Process** — Trigger OCR → Diff → Annotation pipeline (real-time progress polling)
-4. **Review** — Interactive annotation editor:
+1. **Configure Providers** (optional) — Go to the Providers page to add OCR API providers and set a default; or use the global `.env` config directly
+2. **Create Task** — Enter a title, paste reference text, select provider and OCR model (optional override)
+3. **Upload Images** — Drag & drop one or more handwritten images
+4. **Process** — Trigger OCR → Diff → Annotation pipeline (real-time progress polling)
+5. **Review** — Interactive annotation editor:
    - Zoom/pan image viewer
    - SVG overlay annotations (ellipse, underline, caret)
    - Select, move, resize, create, delete annotations
    - Undo/Redo (Ctrl+Z / Ctrl+Shift+Z)
    - Edit OCR text with live diff preview
    - Regenerate annotations
-   - Export annotated images (adjustable scale and font)
+   - Export single annotated image (adjustable scale and font)
+6. **Batch Export** — Click "Export All Annotated" on the task detail page to download a ZIP of all annotated images
 
 ## Annotation Types
 
@@ -190,25 +192,36 @@ docker compose exec backend bash
 ```
 Upload Image
     ↓
+Preprocessing (auto-deskew + CLAHE contrast enhancement)
+    ↓
 OCR Recognition (Gemini Vision API)
     ↓ word-level bounding boxes
-Word Diff (LCS + contraction handling)
+Bbox Refinement (adaptive thresholding)
+    ↓
+Word Diff (LCS + contraction handling, single diff across all images concatenated)
     ↓ DiffOp list: CORRECT / WRONG / EXTRA / MISSING
 Annotation Rendering (OpenCV)
     ↓ annotated JPG
 Persist to DB (WordAnnotation records)
 ```
 
-Each step updates `ImageRecord.status`, enabling real-time progress polling from the frontend.
+Each step updates `ImageRecord.status`, enabling real-time progress polling from the frontend. CPU-intensive steps (preprocessing, refinement, rendering) run in a thread pool via `asyncio.to_thread` to avoid blocking the event loop.
 
 ## API Endpoints
+
+### Tasks & Images
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/v1/tasks` | Create comparison task |
 | `GET` | `/api/v1/tasks` | List tasks (paginated) |
 | `GET` | `/api/v1/tasks/{id}` | Task details |
+| `PATCH` | `/api/v1/tasks/{id}` | Update reference text and re-diff |
 | `DELETE` | `/api/v1/tasks/{id}` | Delete task |
+| `POST` | `/api/v1/tasks/{id}/process` | Trigger OCR processing |
+| `GET` | `/api/v1/tasks/{id}/progress` | Processing progress |
+| `GET` | `/api/v1/tasks/{id}/stats` | Accuracy statistics |
+| `GET` | `/api/v1/tasks/{id}/export-zip` | Download all annotated images as ZIP |
 | `POST` | `/api/v1/tasks/{id}/images` | Upload images |
 | `GET` | `/api/v1/tasks/{id}/images` | List task images |
 | `PUT` | `/api/v1/tasks/{id}/images/reorder` | Reorder images |
@@ -219,10 +232,20 @@ Each step updates `ImageRecord.status`, enabling real-time progress polling from
 | `PUT` | `/api/v1/images/{id}/annotations` | Replace all annotations |
 | `POST` | `/api/v1/images/{id}/annotations` | Add single annotation |
 | `DELETE` | `/api/v1/images/{id}/annotations/{aid}` | Delete annotation |
-| `POST` | `/api/v1/tasks/{id}/process` | Trigger OCR processing |
-| `GET` | `/api/v1/tasks/{id}/progress` | Processing progress |
 | `POST` | `/api/v1/images/{id}/regenerate` | Re-run diff + annotate |
-| `POST` | `/api/v1/images/{id}/export` | Export annotated image |
+| `POST` | `/api/v1/images/{id}/render-export` | Render export image (custom annotations) |
+
+### Model Providers
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/providers` | List providers |
+| `POST` | `/api/v1/providers` | Create provider |
+| `PATCH` | `/api/v1/providers/{id}` | Update provider |
+| `DELETE` | `/api/v1/providers/{id}` | Delete provider |
+| `POST` | `/api/v1/providers/{id}/set-default` | Set as default provider |
+| `POST` | `/api/v1/providers/{id}/test-models` | Test stored credentials |
+| `POST` | `/api/v1/providers/test` | Test ephemeral credentials (not saved) |
 
 ## Tech Stack
 
@@ -234,7 +257,7 @@ Each step updates `ImageRecord.status`, enabling real-time progress polling from
 | [SQLAlchemy](https://www.sqlalchemy.org/) 2.0 (async) | ORM + database |
 | [aiosqlite](https://github.com/omnilib/aiosqlite) | Async SQLite driver |
 | [OpenAI SDK](https://github.com/openai/openai-python) | Gemini API (compatible endpoint) |
-| [OpenCV](https://opencv.org/) | Image annotation rendering |
+| [OpenCV](https://opencv.org/) | Image annotation rendering + bbox refinement |
 | [Pillow](https://pillow.readthedocs.io/) | Image processing |
 | [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) | Configuration management |
 
