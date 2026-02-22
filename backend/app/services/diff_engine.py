@@ -33,14 +33,89 @@ def _normalize(word: str) -> str:
     return re.sub(r"^[^\w]+|[^\w]+$", "", word.lower())
 
 
+# ---------------------------------------------------------------------------
+# Number equivalence tables
+# ---------------------------------------------------------------------------
+
+# Maps English number words (normalized) to their integer values.
+# Covers cardinal and ordinal forms for 0–90 plus hundred/thousand.
+_NUMBER_WORD_TO_INT: dict[str, int] = {
+    # Cardinals 0–19
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+    "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
+    "eighteen": 18, "nineteen": 19,
+    # Cardinals — tens
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+    # Cardinals — large units
+    "hundred": 100, "thousand": 1000,
+    # Ordinals 1–20
+    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+    "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
+    "eleventh": 11, "twelfth": 12, "thirteenth": 13, "fourteenth": 14,
+    "fifteenth": 15, "sixteenth": 16, "seventeenth": 17, "eighteenth": 18,
+    "nineteenth": 19, "twentieth": 20,
+    # Ordinals — tens
+    "thirtieth": 30, "fortieth": 40, "fiftieth": 50,
+    "sixtieth": 60, "seventieth": 70, "eightieth": 80, "ninetieth": 90,
+}
+
+# Suffix pattern used to strip ordinal suffixes from Arabic numerals (1st, 2nd …)
+_ORDINAL_SUFFIX_RE = re.compile(r"(st|nd|rd|th)$")
+
+
+def _parse_as_number(norm_word: str) -> int | None:
+    """Return the integer value of a normalized word if it represents a number.
+
+    Accepts:
+    - Arabic numerals: "1", "42"
+    - Arabic ordinals: "1st", "2nd", "3rd", "4th"
+    - English cardinal words: "one", "twenty"
+    - English ordinal words: "first", "twentieth"
+
+    Returns None if the word cannot be interpreted as a number.
+    """
+    # Strip ordinal suffix before trying int() so "1st" → "1"
+    arabic = _ORDINAL_SUFFIX_RE.sub("", norm_word)
+    try:
+        return int(arabic)
+    except ValueError:
+        pass
+    return _NUMBER_WORD_TO_INT.get(norm_word)
+
+
+def _are_number_equivalent(norm_a: str, norm_b: str) -> bool:
+    """Return True if two normalized words represent the same number."""
+    val_a = _parse_as_number(norm_a)
+    if val_a is None:
+        return False
+    val_b = _parse_as_number(norm_b)
+    return val_b is not None and val_a == val_b
+
+
+def _strip_display(word: str | None) -> str | None:
+    """Strip edge punctuation for storage/display, preserving original case.
+
+    Applied to ocr_word and reference_word in every DiffOp so that all
+    downstream consumers (DB, annotated images, UI) are punctuation-free.
+    Falls back to the original if stripping would produce an empty string
+    (e.g. the word consists entirely of punctuation).
+    """
+    if word is None:
+        return None
+    stripped = re.sub(r"^[^\w]+|[^\w]+$", "", word)
+    return stripped if stripped else word
+
+
 def normalize_word_list(text: str) -> list[str]:
-    """Split text into word list, stripping edge punctuation but preserving original case."""
-    result: list[str] = []
-    for w in text.split():
-        cleaned = re.sub(r"^[^\w]+|[^\w]+$", "", w)
-        if cleaned:
-            result.append(cleaned)
-    return result
+    """Split text into a word list, preserving original punctuation and case.
+
+    Punctuation stripping is intentionally deferred to comparison time via
+    _normalize(), so that display and annotations show the original words.
+    """
+    return [w for w in text.split() if w]
 
 
 # ---------------------------------------------------------------------------
@@ -185,8 +260,8 @@ def _fix_contractions(
         na = norm_ocr[op.ocr_index]
         nb = norm_ref[op.ref_index]
 
-        # P0: single WRONG, direct contraction equivalence (e.g. can't ↔ cannot)
-        if _are_contraction_equivalent([na], [nb]):
+        # P0: single WRONG, direct equivalence (contraction or number word ↔ digit)
+        if _are_contraction_equivalent([na], [nb]) or _are_number_equivalent(na, nb):
             result.append(DiffOp(
                 diff_type=DiffType.CORRECT,
                 ocr_index=op.ocr_index,
@@ -276,6 +351,76 @@ def _fix_contractions(
                 matched = True
                 break
 
+            # P1b: nb is MISSING; subsequent ref words alone match the OCR contraction.
+            # Example: OCR "you're" vs ref "of you are" → MISSING "of", CORRECT "you're"↔"you are"
+            if not matched and ref_bearing:
+                for take in range(1, len(ref_bearing) + 1):
+                    ref_norms_b = [
+                        norm_ref[rb_op.ref_index]  # type: ignore[arg-type]
+                        for _, rb_op in ref_bearing[:take]
+                    ]
+                    if not _are_contraction_equivalent([na], ref_norms_b):
+                        continue
+
+                    # nb is MISSING; bearing ref words form CORRECT with na
+                    result.append(DiffOp(
+                        diff_type=DiffType.MISSING,
+                        ocr_index=None,
+                        ref_index=op.ref_index,
+                        ocr_word=None,
+                        reference_word=op.reference_word,
+                    ))
+
+                    consumed_b = {k for k, _ in ref_bearing[:take]}
+                    merged_ref_b = [rb_op.reference_word or "" for _, rb_op in ref_bearing[:take]]
+                    released_ocr_b: list[DiffOp] = [
+                        rb_op for _, rb_op in ref_bearing[:take]
+                        if rb_op.diff_type == DiffType.WRONG
+                    ]
+
+                    result.append(DiffOp(
+                        diff_type=DiffType.CORRECT,
+                        ocr_index=op.ocr_index,
+                        ref_index=ref_bearing[0][1].ref_index,
+                        ocr_word=op.ocr_word,
+                        reference_word=" ".join(merged_ref_b),
+                    ))
+
+                    remaining_b = [run[k] for k in range(len(run)) if k not in consumed_b]
+                    missing_used_b: set[int] = set()
+                    for roc in released_ocr_b:
+                        paired = False
+                        for ri, rop in enumerate(remaining_b):
+                            if ri not in missing_used_b and rop.diff_type == DiffType.MISSING:
+                                assert roc.ocr_index is not None
+                                result.append(DiffOp(
+                                    diff_type=DiffType.WRONG,
+                                    ocr_index=roc.ocr_index,
+                                    ref_index=rop.ref_index,
+                                    ocr_word=ocr_words[roc.ocr_index],
+                                    reference_word=rop.reference_word,
+                                ))
+                                missing_used_b.add(ri)
+                                paired = True
+                                break
+                        if not paired:
+                            assert roc.ocr_index is not None
+                            result.append(DiffOp(
+                                diff_type=DiffType.EXTRA,
+                                ocr_index=roc.ocr_index,
+                                ref_index=None,
+                                ocr_word=ocr_words[roc.ocr_index],
+                                reference_word=None,
+                            ))
+
+                    for ri, rop in enumerate(remaining_b):
+                        if ri not in missing_used_b:
+                            result.append(rop)
+
+                    i = run_end
+                    matched = True
+                    break
+
             if matched:
                 continue
 
@@ -351,6 +496,76 @@ def _fix_contractions(
                 i = run_end
                 matched = True
                 break
+
+            # P2b: na is EXTRA; subsequent OCR words alone match the ref contraction.
+            # Example: OCR "of you are" vs ref "you're" → EXTRA "of", CORRECT "you are"↔"you're"
+            if not matched and ocr_bearing:
+                for take in range(1, len(ocr_bearing) + 1):
+                    ocr_norms_b = [
+                        norm_ocr[ob_op.ocr_index]  # type: ignore[arg-type]
+                        for _, ob_op in ocr_bearing[:take]
+                    ]
+                    if not _are_contraction_equivalent(ocr_norms_b, [nb]):
+                        continue
+
+                    # na is EXTRA; bearing OCR words form CORRECT with nb
+                    result.append(DiffOp(
+                        diff_type=DiffType.EXTRA,
+                        ocr_index=op.ocr_index,
+                        ref_index=None,
+                        ocr_word=op.ocr_word,
+                        reference_word=None,
+                    ))
+
+                    consumed_b = {k for k, _ in ocr_bearing[:take]}
+                    merged_ocr_b = [ob_op.ocr_word or "" for _, ob_op in ocr_bearing[:take]]
+                    released_ref_b: list[DiffOp] = [
+                        ob_op for _, ob_op in ocr_bearing[:take]
+                        if ob_op.diff_type == DiffType.WRONG
+                    ]
+
+                    result.append(DiffOp(
+                        diff_type=DiffType.CORRECT,
+                        ocr_index=ocr_bearing[0][1].ocr_index,
+                        ref_index=op.ref_index,
+                        ocr_word=" ".join(merged_ocr_b),
+                        reference_word=op.reference_word,
+                    ))
+
+                    remaining_b = [run[k] for k in range(len(run)) if k not in consumed_b]
+                    extra_used_b: set[int] = set()
+                    for rref in released_ref_b:
+                        paired = False
+                        for ri, rop in enumerate(remaining_b):
+                            if ri not in extra_used_b and rop.diff_type == DiffType.EXTRA:
+                                assert rref.ref_index is not None
+                                result.append(DiffOp(
+                                    diff_type=DiffType.WRONG,
+                                    ocr_index=rop.ocr_index,
+                                    ref_index=rref.ref_index,
+                                    ocr_word=rop.ocr_word,
+                                    reference_word=ref_words[rref.ref_index],
+                                ))
+                                extra_used_b.add(ri)
+                                paired = True
+                                break
+                        if not paired:
+                            assert rref.ref_index is not None
+                            result.append(DiffOp(
+                                diff_type=DiffType.MISSING,
+                                ocr_index=None,
+                                ref_index=rref.ref_index,
+                                ocr_word=None,
+                                reference_word=ref_words[rref.ref_index],
+                            ))
+
+                    for ri, rop in enumerate(remaining_b):
+                        if ri not in extra_used_b:
+                            result.append(rop)
+
+                    i = run_end
+                    matched = True
+                    break
 
             if matched:
                 continue
@@ -444,4 +659,16 @@ def compute_word_diff(
                     reference_word=reference_words[ref_idx],
                 ))
 
-    return _fix_contractions(ops, ocr_words, reference_words)
+    raw_ops = _fix_contractions(ops, ocr_words, reference_words)
+    # Strip edge punctuation from all word fields so every downstream consumer
+    # (DB, annotated images, UI diff display) sees clean words.
+    return [
+        DiffOp(
+            diff_type=op.diff_type,
+            ocr_index=op.ocr_index,
+            ref_index=op.ref_index,
+            ocr_word=_strip_display(op.ocr_word),
+            reference_word=_strip_display(op.reference_word),
+        )
+        for op in raw_ops
+    ]

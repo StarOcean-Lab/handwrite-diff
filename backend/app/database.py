@@ -39,6 +39,8 @@ async def _migrate_add_columns(conn) -> None:  # type: ignore[no-untyped-def]
         ("word_annotations", "label_x", "REAL", None),
         ("word_annotations", "label_y", "REAL", None),
         ("word_annotations", "label_font_size", "REAL", None),
+        ("comparison_tasks", "provider_id", "INTEGER", None),
+        ("model_providers", "models_json", "TEXT", None),
     ]
 
     for table, col_name, col_type, default in new_columns:
@@ -55,6 +57,7 @@ async def _migrate_add_columns(conn) -> None:  # type: ignore[no-untyped-def]
 async def init_db() -> None:
     """Create all tables and run lightweight migrations."""
     async with engine.begin() as conn:
+        await conn.execute(text("PRAGMA foreign_keys=ON"))
         await conn.run_sync(Base.metadata.create_all)
         await _migrate_add_columns(conn)
 

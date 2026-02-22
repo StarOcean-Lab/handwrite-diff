@@ -41,7 +41,12 @@ class Settings(BaseSettings):
     gemini_temperature: float = 0.1  # Low temperature for OCR accuracy
     gemini_timeout: float = 120.0  # API request timeout (seconds)
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        # Support comma-separated list in addition to JSON array format
+        "env_list_separator": ",",
+    }
 
     def ensure_storage_dirs(self) -> None:
         """Create storage directories if they don't exist."""

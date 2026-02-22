@@ -46,6 +46,12 @@ export default function ImageReviewPage() {
   const [imageSize, setImageSize] = useState({ w: 800, h: 600 });
   const [editingOcrText, setEditingOcrText] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+
+  const showToast = useCallback((message: string) => {
+    setToast({ message });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
 
   // Load data
   useEffect(() => {
@@ -119,6 +125,7 @@ export default function ImageReviewPage() {
       // Reload image detail
       const updated = await getImageDetail(imageId);
       setImage(updated);
+      showToast(t("saveSuccess"));
     } catch {
       alert(t("saveError"));
     } finally {
@@ -156,6 +163,7 @@ export default function ImageReviewPage() {
       const updated = await getImageDetail(imageId);
       setImage(updated);
       setLocalAnnotations(updated.annotations);
+      showToast(t("regenerateSuccess"));
     }, 2000);
   };
 
@@ -179,48 +187,88 @@ export default function ImageReviewPage() {
   const isLivePreview = liveDiffOps !== null;
 
   if (loading) {
-    return <div className="py-20 text-center text-[var(--color-text-secondary)]">{tc("loading")}</div>;
+    return (
+      <div className="flex items-center justify-center py-24">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-primary)]" />
+          <span className="text-sm text-[var(--color-text-secondary)]">{tc("loading")}</span>
+        </div>
+      </div>
+    );
   }
 
   if (!image || !task) {
-    return <div className="py-20 text-center text-red-500">{t("imageNotFound")}</div>;
+    return (
+      <div className="py-20 text-center">
+        <p className="text-red-500">{t("imageNotFound")}</p>
+      </div>
+    );
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
           <button
             onClick={() => router.push(`/tasks/${taskId}`)}
-            className="text-sm text-[var(--color-primary)] hover:underline"
+            className="flex-shrink-0 inline-flex cursor-pointer items-center gap-1 text-sm text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-primary)]"
           >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M9 3L5 7L9 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
             {t("back")}
           </button>
-          <h1 className="text-lg font-bold">{image.label ?? `Image #${image.id}`}</h1>
-          <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
-            {t("diffCount", { count: diffCount })}
-          </span>
+          <span className="text-[var(--color-border-strong)]">·</span>
+          <h1 className="min-w-0 truncate text-base font-bold text-[var(--color-text)]">
+            {image.label ?? `Image #${image.id}`}
+          </h1>
+          {diffCount > 0 && (
+            <span className="flex-shrink-0 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-600">
+              {t("diffCount", { count: diffCount })}
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          {prevImage && (
+        {/* Navigation */}
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {prevImage ? (
             <a
               href={`/tasks/${taskId}/images/${prevImage.id}`}
-              className="rounded border border-[var(--color-border)] px-3 py-1.5 text-sm hover:bg-gray-50"
+              className="inline-flex items-center gap-1 rounded-xl border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm font-medium transition-all hover:border-[var(--color-border-strong)] hover:shadow-sm"
             >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M7.5 2.5L4.5 6L7.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
               {t("prev")}
             </a>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-xl border border-[var(--color-border)] bg-slate-50 px-3 py-1.5 text-sm text-[var(--color-text-muted)] cursor-not-allowed">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M7.5 2.5L4.5 6L7.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              {t("prev")}
+            </span>
           )}
-          <span className="text-xs text-[var(--color-text-secondary)]">
+          <span className="text-xs tabular-nums text-[var(--color-text-muted)]">
             {currentIndex + 1} / {allImages.length}
           </span>
-          {nextImage && (
+          {nextImage ? (
             <a
               href={`/tasks/${taskId}/images/${nextImage.id}`}
-              className="rounded border border-[var(--color-border)] px-3 py-1.5 text-sm hover:bg-gray-50"
+              className="inline-flex items-center gap-1 rounded-xl border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm font-medium transition-all hover:border-[var(--color-border-strong)] hover:shadow-sm"
             >
               {t("next")}
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
             </a>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-xl border border-[var(--color-border)] bg-slate-50 px-3 py-1.5 text-sm text-[var(--color-text-muted)] cursor-not-allowed">
+              {t("next")}
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
           )}
         </div>
       </div>
@@ -241,8 +289,8 @@ export default function ImageReviewPage() {
       {/* Main content: Image viewer with annotation overlay */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Left: Original image */}
-        <div className="overflow-hidden rounded-xl border border-[var(--color-border)]">
-          <div className="border-b border-[var(--color-border)] bg-gray-50 px-3 py-2 text-sm font-medium">
+        <div className="overflow-hidden rounded-2xl border border-[var(--color-border)] shadow-[var(--shadow-sm)]">
+          <div className="border-b border-[var(--color-border)] bg-slate-50 px-4 py-2.5 text-sm font-semibold text-[var(--color-text)]">
             {t("originalImage")}
           </div>
           <div style={{ height: 500 }}>
@@ -254,8 +302,8 @@ export default function ImageReviewPage() {
         </div>
 
         {/* Right: Annotated view with interactive editor */}
-        <div className="overflow-hidden rounded-xl border border-[var(--color-border)]">
-          <div className="border-b border-[var(--color-border)] bg-gray-50 px-3 py-2 text-sm font-medium">
+        <div className="overflow-hidden rounded-2xl border border-[var(--color-border)] shadow-[var(--shadow-sm)]">
+          <div className="border-b border-[var(--color-border)] bg-slate-50 px-4 py-2.5 text-sm font-semibold text-[var(--color-text)]">
             {t("annotationEditor")}
           </div>
           <div style={{ height: 500 }}>
@@ -274,37 +322,54 @@ export default function ImageReviewPage() {
 
       {/* Text panels */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
-          <h3 className="mb-2 text-sm font-medium text-[var(--color-text-secondary)]">
+        {/* Reference text */}
+        <div className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] shadow-[var(--shadow-sm)]">
+          <div className="border-b border-[var(--color-border)] bg-slate-50 px-4 py-2.5 text-sm font-semibold text-[var(--color-text)]">
             {t("referenceText")}
-          </h3>
-          <p className="text-sm whitespace-pre-wrap">{task.reference_text}</p>
+          </div>
+          <div className="p-4">
+            <div className="rounded-xl bg-slate-50 p-3 font-mono text-sm leading-relaxed whitespace-pre-wrap text-[var(--color-text)]">
+              {displayDiffOps
+                ?.filter((op) => op.ref_index !== null)
+                .map((op) => refWords[op.ref_index!] ?? op.reference_word)
+                .join(" ") || (
+                <span className="text-[var(--color-text-muted)]">—</span>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
-          <OcrTextEditor
-            initialText={image.ocr_raw_text ?? ""}
-            onSave={handleOcrSave}
-            onTextChange={setEditingOcrText}
-          />
+        {/* OCR text editor */}
+        <div className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] shadow-[var(--shadow-sm)]">
+          <div className="p-4">
+            <OcrTextEditor
+              initialText={image.ocr_raw_text ?? ""}
+              onSave={handleOcrSave}
+              onTextChange={setEditingOcrText}
+            />
+          </div>
         </div>
       </div>
 
       {/* Diff display */}
       {displayDiffOps && (
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
-          <h3 className="mb-3 text-sm font-medium text-[var(--color-text-secondary)]">
-            {t("wordComparison")}
+        <div className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] shadow-[var(--shadow-sm)]">
+          <div className="flex items-center gap-2 border-b border-[var(--color-border)] bg-slate-50 px-4 py-2.5">
+            <span className="text-sm font-semibold text-[var(--color-text)]">
+              {t("wordComparison")}
+            </span>
             {isLivePreview && (
-              <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-600">
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-600">
                 {t("live")}
               </span>
             )}
-          </h3>
-          <DiffDisplay
-            ocrWords={isLivePreview ? editingOcrText!.split(/\s+/).filter(Boolean) : ocrWords}
-            referenceWords={refWords}
-            diffOps={displayDiffOps as any}
-          />
+          </div>
+          <div className="p-4">
+            <DiffDisplay
+              ocrWords={isLivePreview ? editingOcrText!.split(/\s+/).filter(Boolean) : ocrWords}
+              referenceWords={refWords}
+              diffOps={displayDiffOps as any}
+            />
+          </div>
         </div>
       )}
 
@@ -313,19 +378,28 @@ export default function ImageReviewPage() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="rounded-lg bg-[var(--color-primary)] px-5 py-2.5 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)] disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-md disabled:opacity-50"
+          style={{ background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)" }}
         >
-          {saving ? t("saving") : t("saveCorrections")}
+          {saving ? (
+            <>
+              <svg className="animate-spin" width="13" height="13" viewBox="0 0 14 14" fill="none">
+                <circle cx="7" cy="7" r="5.5" stroke="rgba(255,255,255,0.4)" strokeWidth="2"/>
+                <path d="M7 1.5A5.5 5.5 0 0112.5 7" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+              {t("saving")}
+            </>
+          ) : t("saveCorrections")}
         </button>
         <button
           onClick={handleRegenerate}
-          className="rounded-lg border border-[var(--color-border)] px-5 py-2.5 text-sm font-medium hover:bg-gray-50"
+          className="rounded-xl border border-[var(--color-border)] bg-white px-5 py-2.5 text-sm font-medium text-[var(--color-text-secondary)] transition-all hover:border-[var(--color-border-strong)] hover:bg-slate-50"
         >
           {t("regenerateAnnotations")}
         </button>
         <button
           onClick={handleExport}
-          className="rounded-lg border border-[var(--color-border)] px-5 py-2.5 text-sm font-medium hover:bg-gray-50"
+          className="rounded-xl border border-[var(--color-border)] bg-white px-5 py-2.5 text-sm font-medium text-[var(--color-text-secondary)] transition-all hover:border-[var(--color-border-strong)] hover:bg-slate-50"
         >
           {t("exportAnnotatedImage")}
         </button>
@@ -339,6 +413,13 @@ export default function ImageReviewPage() {
           imageLabel={image.label}
           onClose={() => setShowExportModal(false)}
         />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-gray-900 px-5 py-3 text-sm text-white shadow-lg transition-all">
+          {toast.message}
+        </div>
       )}
     </div>
   );

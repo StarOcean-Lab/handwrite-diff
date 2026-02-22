@@ -4,10 +4,11 @@ Uses Gemini models via OpenAI-compatible API for handwritten text recognition
 with word-level bounding boxes. Works with any OpenAI-compatible proxy
 (e.g. yunwu.ai).
 
-Public interface (unchanged from Surya version):
+Public interface:
   - OcrWord(text, bbox, confidence)
   - OcrResult(raw_text, words)
-  - async run_ocr(image_path) -> OcrResult
+  - ProviderConfig(base_url, api_key, model)
+  - async run_ocr(image_path, model=None, provider_config=None) -> OcrResult
 """
 
 import asyncio
@@ -24,8 +25,8 @@ from app.config import get_settings
 
 logger = logging.getLogger("handwrite_diff.ocr")
 
-# Module-level singleton for OpenAI client
-_openai_client = None
+# Per-(base_url, api_key) client cache — avoids reinitializing on every call
+_client_cache: dict[tuple[str, str], object] = {}
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,14 @@ class OcrResult:
     words: list[OcrWord]
 
 
+@dataclass(frozen=True)
+class ProviderConfig:
+    """Provider-specific OCR configuration (overrides global settings)."""
+    base_url: str
+    api_key: str
+    model: str
+
+
 # -- System prompt for OCR --
 
 _SYSTEM_PROMPT = (
@@ -57,28 +66,26 @@ _SYSTEM_PROMPT = (
     "Important rules:\n"
     "- Preserve the original handwriting exactly, including misspellings\n"
     "- Each word should have its own bounding box\n"
+    "- SKIP any word that has a deletion mark on it, such as a strikethrough line, "
+    "a scribble-out, a cross-out, or any other mark that indicates the writer "
+    "intentionally deleted or cancelled that word — do NOT include it in the output\n"
     "- Return {\"words\": []} if no handwritten text is found"
 )
 
 _USER_PROMPT = "Detect all handwritten words in this image with their bounding boxes."
 
 
-def _get_openai_client():
-    """Lazily initialize OpenAI-compatible async client (singleton).
+def _get_client(base_url: str | None, api_key: str) -> object:
+    """Return a cached AsyncOpenAI client for the given (base_url, api_key) pair.
 
-    Clears SOCKS proxy env vars that httpx cannot handle.
-    Also clears HTTP/HTTPS proxy when using a direct-connect
-    proxy service (like yunwu.ai) to avoid double-proxying.
+    On first creation, clears SOCKS/HTTP proxy env vars so the connection
+    goes directly to the relay endpoint.
     """
-    global _openai_client
-
-    if _openai_client is None:
+    cache_key = (base_url or "", api_key)
+    if cache_key not in _client_cache:
         from openai import AsyncOpenAI
 
-        settings = get_settings()
-
-        # Clear proxy env vars — the API endpoint (yunwu.ai etc.) is
-        # itself a relay, so we connect directly without local proxy.
+        # Clear proxy env vars — the API endpoint is itself a relay.
         for var in (
             "ALL_PROXY", "all_proxy",
             "HTTP_PROXY", "http_proxy",
@@ -88,23 +95,42 @@ def _get_openai_client():
             if val:
                 logger.info("Cleared %s for direct API connection", var)
 
-        base_url = settings.gemini_base_url or None
-        # Ensure base_url ends with /v1 for OpenAI-compatible endpoints
-        if base_url and not base_url.rstrip("/").endswith("/v1"):
-            base_url = base_url.rstrip("/") + "/v1"
-
-        _openai_client = AsyncOpenAI(
-            api_key=settings.gemini_api_key,
-            base_url=base_url,
-            timeout=settings.gemini_timeout,
+        _client_cache[cache_key] = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,  # None = use OpenAI default
+            timeout=get_settings().gemini_timeout,
         )
         logger.info(
-            "OpenAI client initialized (model: %s, base_url: %s)",
-            settings.gemini_model,
+            "OpenAI client initialized (base_url: %s)",
             base_url or "(default)",
         )
 
-    return _openai_client
+    return _client_cache[cache_key]
+
+
+def _resolve_client_and_model(
+    model: str | None,
+    provider_config: ProviderConfig | None,
+) -> tuple[object, str]:
+    """Return (client, effective_model) based on provider config or global settings."""
+    settings = get_settings()
+
+    if provider_config is not None:
+        # Normalize base_url
+        url = provider_config.base_url.rstrip("/")
+        if not url.endswith("/v1"):
+            url += "/v1"
+        client = _get_client(url, provider_config.api_key)
+        effective_model = model or provider_config.model
+    else:
+        # Fall back to global settings
+        base_url = settings.gemini_base_url or None
+        if base_url and not base_url.rstrip("/").endswith("/v1"):
+            base_url = base_url.rstrip("/") + "/v1"
+        client = _get_client(base_url, settings.gemini_api_key)
+        effective_model = model or settings.gemini_model
+
+    return client, effective_model
 
 
 def _convert_bbox(
@@ -141,18 +167,21 @@ def _image_to_data_url(image_path: str) -> str:
     return f"data:{mime_type};base64,{b64}"
 
 
-async def _call_api_with_retry(image_path: str, model: str | None = None) -> list[dict]:
+async def _call_api_with_retry(
+    image_path: str,
+    model: str | None = None,
+    provider_config: ProviderConfig | None = None,
+) -> list[dict]:
     """Call OpenAI-compatible API with exponential backoff retry."""
     settings = get_settings()
-    client = _get_openai_client()
+    client, effective_model = _resolve_client_and_model(model, provider_config)
 
     data_url = _image_to_data_url(image_path)
-    effective_model = model or settings.gemini_model
 
     last_error: Exception | None = None
     for attempt in range(settings.gemini_max_retries):
         try:
-            response = await client.chat.completions.create(
+            response = await client.chat.completions.create(  # type: ignore[attr-defined]
                 model=effective_model,
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
@@ -179,7 +208,10 @@ async def _call_api_with_retry(image_path: str, model: str | None = None) -> lis
                 return parsed
             if isinstance(parsed, dict) and "words" in parsed:
                 return parsed["words"]
-            logger.warning("Unexpected response structure: %s", list(parsed.keys()) if isinstance(parsed, dict) else type(parsed))
+            logger.warning(
+                "Unexpected response structure: %s",
+                list(parsed.keys()) if isinstance(parsed, dict) else type(parsed),
+            )
             return []
 
         except Exception as e:
@@ -206,12 +238,20 @@ async def _call_api_with_retry(image_path: str, model: str | None = None) -> lis
     ) from last_error
 
 
-async def run_ocr(image_path: str, model: str | None = None) -> OcrResult:
+async def run_ocr(
+    image_path: str,
+    model: str | None = None,
+    provider_config: ProviderConfig | None = None,
+) -> OcrResult:
     """Run OCR asynchronously via OpenAI-compatible API.
 
     Args:
         image_path: Path to the image file.
-        model: Optional model override. Falls back to config default if None.
+        model: Optional model override. Falls back to provider_config.model
+               or global settings if None.
+        provider_config: Optional per-task provider configuration.
+                         When provided, overrides global settings for
+                         base_url and api_key.
 
     Returns OcrResult with the same interface as the previous Surya
     implementation, ensuring zero changes to downstream pipeline.
@@ -225,7 +265,9 @@ async def run_ocr(image_path: str, model: str | None = None) -> OcrResult:
         img_width, img_height = img.size
 
     # Call API
-    raw_words = await _call_api_with_retry(str(path), model=model)
+    raw_words = await _call_api_with_retry(
+        str(path), model=model, provider_config=provider_config
+    )
 
     # Convert to OcrWord with pixel-coordinate bboxes
     words: list[OcrWord] = []
@@ -239,7 +281,6 @@ async def run_ocr(image_path: str, model: str | None = None) -> OcrResult:
         if box_2d and len(box_2d) == 4:
             bbox = _convert_bbox(box_2d, img_width, img_height)
         else:
-            # Fallback: no bbox available
             bbox = (0.0, 0.0, 0.0, 0.0)
 
         words.append(OcrWord(text=text, bbox=bbox, confidence=confidence))

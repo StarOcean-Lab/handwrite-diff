@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.database import init_db
-from app.routers import images, processing, tasks
+from app.routers import images, processing, providers, tasks
 
 logger = logging.getLogger("handwrite_diff")
 
@@ -58,6 +58,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 app.include_router(tasks.router)
 app.include_router(images.router)
 app.include_router(processing.router)
+app.include_router(providers.router)
 
 
 @app.get("/health")

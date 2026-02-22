@@ -15,7 +15,8 @@
     "close": "Close",
     "confirm": "Confirm",
     "processing": "Processing…",
-    "newTask": "+ New Task"
+    "newTask": "+ New Task",
+    "providers": "Providers"
   },
   "home": {
     "title": "Comparison Tasks",
@@ -35,9 +36,21 @@
   },
   "newTask": {
     "title": "New Comparison Task",
+    "subtitle": "Upload handwriting images and automatically compare them against reference text",
+    "steps": {
+      "text": "Reference",
+      "upload": "Upload",
+      "confirm": "Confirm"
+    },
     "taskTitle": "Task Title",
     "taskTitlePlaceholder": "e.g., Listening Material A",
-    "ocrModel": "OCR Model",
+    "ocrProvider": "OCR Provider",
+    "ocrModel": "OCR Model (optional override)",
+    "ocrModelPlaceholder": "Leave empty to use provider default",
+    "useGlobalConfig": "Use global config (.env)",
+    "default": "default",
+    "noProviderHint": "No providers configured. Go to",
+    "manageProviders": "Provider Management",
     "referenceText": "Reference Text",
     "referenceTextPlaceholder": "Paste the reference text here...",
     "fillRequired": "Please fill in both task title and reference text.",
@@ -59,6 +72,10 @@
     "backToTasks": "← Back to Tasks",
     "imageCount": "{total} image(s) · {completed} completed",
     "referenceText": "Reference Text",
+    "editReferenceText": "Edit",
+    "saveReferenceText": "Save & Re-diff",
+    "savingReferenceText": "Saving...",
+    "saveReferenceTextError": "Failed to save reference text",
     "processImages": "Process {count} Image(s)",
     "processError": "Failed to start processing",
     "savingOrder": "Saving new order...",
@@ -84,7 +101,16 @@
       "reviewed": "Reviewed",
       "failed": "Failed"
     },
-    "noImages": "No images uploaded yet."
+    "noImages": "No images uploaded yet.",
+    "stats": {
+      "accuracy": "Accuracy",
+      "correct": "Correct",
+      "wrong": "Wrong",
+      "missing": "Missing",
+      "extra": "Extra"
+    },
+    "exportAllZip": "Export All Annotated",
+    "exportZipError": "Export failed"
   },
   "imageReview": {
     "back": "← Back",
@@ -102,8 +128,11 @@
     "regenerateConfirm": "This will regenerate all annotations from current OCR text. Manual edits will be lost. Continue?",
     "exportAnnotatedImage": "Export Annotated Image",
     "saveError": "Failed to save annotations",
+    "saveSuccess": "Saved successfully",
+    "regenerateSuccess": "Annotations regenerated",
     "imageNotFound": "Image not found",
-    "noDiffData": "No diff data available."
+    "noDiffData": "No diff data available.",
+    "lowConfidenceHint": "Recognition confidence: {pct}%, please verify"
   },
   "toolbar": {
     "select": "Select",
@@ -141,5 +170,57 @@
     "dragHint": "Drag annotations/labels to adjust, Ctrl+scroll to resize font",
     "rendering": "Rendering...",
     "downloadError": "Download failed"
+  },
+  "providers": {
+    "title": "Model Provider Management",
+    "addProvider": "Add Provider",
+    "editProvider": "Edit Provider",
+    "loadError": "Failed to load providers",
+    "loading": "Loading...",
+    "noProviders": "No providers yet",
+    "noProvidersHint": "Click \"Add Provider\" to configure an OCR API.",
+    "default": "default",
+    "setDefault": "Set as Default",
+    "setDefaultError": "Failed to set default provider",
+    "deleteConfirm": "Delete provider \"{name}\"? Associated tasks will fall back to global config.",
+    "deleteError": "Failed to delete provider",
+    "edit": "Edit",
+    "delete": "Delete",
+    "name": "Name",
+    "namePlaceholder": "e.g., Gemini Official",
+    "baseUrl": "Base URL",
+    "apiKey": "API Key",
+    "apiKeyLabel": "API Key",
+    "apiKeyPlaceholder": "sk-...",
+    "apiKeyPlaceholderEdit": "Leave empty to keep existing key",
+    "defaultModel": "Default Model",
+    "defaultModelLabel": "Default Model",
+    "setAsDefaultModel": "Set as default model",
+    "modelsList": "Available Models",
+    "modelsListHint": "Select a radio button to set as default. Press Enter or click \"Add\" to add a model.",
+    "addModel": "Add",
+    "addModelPlaceholder": "e.g. gemini-2.5-flash",
+    "removeModel": "Remove",
+    "modelsRequired": "Please add at least one model.",
+    "defaultModelRequired": "Please select a default model.",
+    "setAsDefault": "Set as default provider",
+    "testConnection": "Test Connection",
+    "testExpand": "Select Models to Test ▾",
+    "testCollapse": "Collapse ▴",
+    "testSelectHint": "Check the models you want to test, then click \"Run Tests\"",
+    "testSelectAll": "Select all",
+    "testSelectNone": "Deselect all",
+    "testRun": "Run Tests ({count} model(s))",
+    "testRunning": "Testing… ({done}/{total})",
+    "testing": "Testing",
+    "testFillRequired": "Please fill in Base URL and API Key first",
+    "testError": "Test failed",
+    "testSuccess": "Connected",
+    "fillRequired": "Please fill in name, Base URL and default model.",
+    "apiKeyRequired": "Please enter an API key.",
+    "saveError": "Save failed",
+    "saving": "Saving...",
+    "save": "Save",
+    "cancel": "Cancel"
   }
 }

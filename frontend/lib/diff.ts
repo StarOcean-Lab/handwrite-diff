@@ -24,6 +24,14 @@ function normalize(word: string): string {
   return word.toLowerCase().replace(/^[^\w]+|[^\w]+$/g, "");
 }
 
+/** Strip edge punctuation for storage/display, preserving original case.
+ *  Applied to every DiffOp word field so UI and annotations are punctuation-free. */
+function stripDisplay(word: string | null): string | null {
+  if (word === null) return null;
+  const stripped = word.replace(/^[^\w]+|[^\w]+$/g, "");
+  return stripped !== "" ? stripped : word;
+}
+
 type Opcode = [
   tag: "equal" | "replace" | "delete" | "insert",
   i1: number,
@@ -546,5 +554,11 @@ export function computeWordDiff(
     }
   }
 
-  return fixContractions(ops, ocrWords, referenceWords);
+  const rawOps = fixContractions(ops, ocrWords, referenceWords);
+  // Strip edge punctuation from all word fields — mirrors backend _strip_display().
+  return rawOps.map((op) => ({
+    ...op,
+    ocr_word: stripDisplay(op.ocr_word),
+    reference_word: stripDisplay(op.reference_word),
+  }));
 }

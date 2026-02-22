@@ -4,13 +4,112 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import ImageViewer from "@/components/ImageViewer";
 import useAnnotationEditor from "@/components/AnnotationEditor";
-import { getOriginalImageUrl, renderExportImage, type Annotation } from "@/lib/api";
+import { getOriginalImageUrl, type Annotation } from "@/lib/api";
 
 interface ExportEditorModalProps {
   imageId: number;
   annotations: Annotation[];
   imageLabel: string | null;
   onClose: () => void;
+}
+
+/** Error-type → Canvas stroke/fill color */
+const ANNOTATION_COLORS: Record<string, string> = {
+  wrong: "#ef4444",
+  extra: "#f97316",
+  missing: "#3b82f6",
+};
+
+/**
+ * Draw all annotations onto a Canvas using the browser Canvas 2D API.
+ * Matches the visual style of the SVG overlay without any OpenCV processing.
+ */
+function drawAnnotations(
+  ctx: CanvasRenderingContext2D,
+  annotations: Annotation[],
+  scaleFactor: number,
+  imgHeight: number,
+): void {
+  // Mirror backend AnnotationStyle.scaled(): base thickness derived from image height
+  const baseThick = Math.max(2, Math.round(imgHeight / 300));
+  const thick = Math.max(1, Math.round(baseThick * scaleFactor));
+  const caretSize = Math.max(8, Math.round(16 * scaleFactor));
+
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  for (const ann of annotations) {
+    const color = ANNOTATION_COLORS[ann.error_type] ?? "#888888";
+    const { bbox_x1: x1, bbox_y1: y1, bbox_x2: x2, bbox_y2: y2 } = ann;
+    const cx = (x1 + x2) / 2;
+    const cy = (y1 + y2) / 2;
+    const rx = (x2 - x1) / 2;
+    const ry = (y2 - y1) / 2;
+
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = thick;
+
+    switch (ann.annotation_shape) {
+      case "ellipse": {
+        // Red ellipse outline around WRONG words
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx + thick, ry + thick * 0.5, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Reference word label above the ellipse
+        if (ann.reference_word) {
+          const fs = ann.label_font_size != null && ann.label_font_size > 0
+            ? ann.label_font_size
+            : Math.max(
+                Math.min(Math.round(ry * 2 * 0.5 * scaleFactor), 48 * scaleFactor),
+                10 * scaleFactor,
+              );
+          ctx.font = `bold ${Math.round(fs)}px sans-serif`;
+          ctx.textBaseline = "bottom";
+          const lx = ann.label_x ?? cx;
+          const ly = ann.label_y ?? (y1 - thick * 2);
+          ctx.fillText(ann.reference_word, lx, ly);
+        }
+        break;
+      }
+
+      case "underline": {
+        // Orange strikethrough line through the vertical center of EXTRA words
+        ctx.beginPath();
+        ctx.moveTo(x1, cy);
+        ctx.lineTo(x2, cy);
+        ctx.stroke();
+        break;
+      }
+
+      case "caret": {
+        // Blue ^ caret for MISSING words
+        ctx.beginPath();
+        ctx.moveTo(cx - caretSize, cy + caretSize / 2);
+        ctx.lineTo(cx, cy - caretSize / 2);
+        ctx.lineTo(cx + caretSize, cy + caretSize / 2);
+        ctx.stroke();
+
+        // Reference word label to the right of the caret
+        if (ann.reference_word) {
+          const bboxH = y2 - y1;
+          const fs = ann.label_font_size != null && ann.label_font_size > 0
+            ? ann.label_font_size
+            : Math.max(
+                Math.min(Math.round(bboxH * 0.5 * scaleFactor), 48 * scaleFactor),
+                10 * scaleFactor,
+              );
+          ctx.font = `bold ${Math.round(fs)}px sans-serif`;
+          ctx.textBaseline = "middle";
+          const lx = ann.label_x ?? (cx + caretSize + thick * 2);
+          const ly = ann.label_y ?? cy;
+          ctx.fillText(ann.reference_word, lx, ly);
+        }
+        break;
+      }
+    }
+  }
 }
 
 export default function ExportEditorModal({
@@ -86,10 +185,15 @@ export default function ExportEditorModal({
     }
   };
 
+  /**
+   * Canvas-based export — draws the original image then overlays annotations
+   * using browser Canvas 2D API.  No backend round-trip, no OpenCV processing.
+   */
   const handleDownload = async () => {
     setDownloading(true);
     setError(null);
     try {
+      // Resolve effective font sizes for every annotation
       const annotationsWithFontSizes = localAnnotations.map((a) => {
         if (a.label_font_size != null && a.label_font_size > 0) return a;
         const bboxH = a.bbox_y2 - a.bbox_y1;
@@ -99,14 +203,44 @@ export default function ExportEditorModal({
         );
         return { ...a, label_font_size: defaultFs };
       });
-      const blob = await renderExportImage(imageId, annotationsWithFontSizes, scaleFactor);
+
+      // Fetch the original image and decode it as a bitmap
+      const resp = await fetch(getOriginalImageUrl(imageId));
+      if (!resp.ok) throw new Error(`Failed to fetch image: ${resp.status}`);
+      const imgBlob = await resp.blob();
+      const bitmap = await createImageBitmap(imgBlob);
+
+      // Create an off-screen canvas at full image resolution
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas 2D context unavailable");
+
+      // 1. Draw the original (unprocessed) image
+      ctx.drawImage(bitmap, 0, 0);
+      bitmap.close();
+
+      // 2. Overlay annotations using Canvas API
+      drawAnnotations(ctx, annotationsWithFontSizes, scaleFactor, canvas.height);
+
+      // 3. Export as JPEG blob
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error("Canvas.toBlob returned null"))),
+          "image/jpeg",
+          0.95,
+        );
+      });
+
+      // 4. Trigger browser download
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `annotated_${imageLabel || imageId}.jpg`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `annotated_${imageLabel || imageId}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("downloadError"));

@@ -10,6 +10,7 @@ Designed for BackgroundTasks execution. Each step updates image status
 so the frontend can poll progress.
 """
 
+import asyncio
 import json
 import logging
 import uuid
@@ -23,8 +24,10 @@ from app.models.comparison_task import ComparisonTask, TaskStatus
 from app.models.image_record import ImageRecord, ImageStatus
 from app.models.word_annotation import AnnotationShape, ErrorType, WordAnnotation
 from app.services.annotator import annotate_image
+from app.services.bbox_refiner import refine_word_bboxes
 from app.services.diff_engine import DiffOp, DiffType, compute_word_diff, normalize_word_list
-from app.services.ocr_service import OcrResult, run_ocr
+from app.services.ocr_service import OcrResult, ProviderConfig, run_ocr
+from app.services.preprocessing import preprocess_for_ocr
 
 logger = logging.getLogger("handwrite_diff.pipeline")
 
@@ -56,11 +59,26 @@ class ProcessingPipeline:
             else normalize_word_list(task.reference_text)
         )
 
+        # Build provider config if the task has a provider_id
+        provider_config: ProviderConfig | None = None
+        if task.provider_id is not None:
+            from app.models.model_provider import ModelProvider
+            provider = await self._db.get(ModelProvider, task.provider_id)
+            if provider:
+                base_url = provider.base_url.rstrip("/")
+                if not base_url.endswith("/v1"):
+                    base_url += "/v1"
+                provider_config = ProviderConfig(
+                    base_url=base_url,
+                    api_key=provider.api_key,
+                    model=provider.default_model,
+                )
+
         # Phase 1: OCR each image
         ocr_model = task.ocr_model
         for image_id in image_ids:
             try:
-                await self._run_ocr_only(image_id, model=ocr_model)
+                await self._run_ocr_only(image_id, model=ocr_model, provider_config=provider_config)
                 task.completed_images += 1
                 await self._db.commit()
             except Exception:
@@ -116,7 +134,12 @@ class ProcessingPipeline:
     # Phase 1: Per-image OCR
     # ------------------------------------------------------------------
 
-    async def _run_ocr_only(self, image_id: int, model: str | None = None) -> None:
+    async def _run_ocr_only(
+        self,
+        image_id: int,
+        model: str | None = None,
+        provider_config: ProviderConfig | None = None,
+    ) -> None:
         """Run OCR on a single image and store results."""
         record = await self._db.get(ImageRecord, image_id)
         if not record:
@@ -125,10 +148,27 @@ class ProcessingPipeline:
         record.status = ImageStatus.OCR_PROCESSING
         await self._db.commit()
 
-        ocr_result: OcrResult = await run_ocr(record.image_path, model=model)
+        # Step 0: preprocess into a temp file — original is never touched
+        ocr_path = await asyncio.to_thread(preprocess_for_ocr, record.image_path)
+        try:
+            ocr_result: OcrResult = await run_ocr(
+                ocr_path, model=model, provider_config=provider_config
+            )
+
+            # Refine bboxes on the preprocessed image (same pixel space)
+            refined_words = await asyncio.to_thread(refine_word_bboxes, ocr_path, ocr_result.words)
+        finally:
+            # Always clean up the temp file; silently ignore missing-file errors
+            if ocr_path != record.image_path:
+                try:
+                    import os as _os
+                    _os.unlink(ocr_path)
+                except OSError:
+                    pass
+
         ocr_words_data = [
             {"text": w.text, "bbox": list(w.bbox), "confidence": w.confidence}
-            for w in ocr_result.words
+            for w in refined_words
         ]
         record.ocr_raw_text = ocr_result.raw_text
         record.ocr_words_json = json.dumps(ocr_words_data)
@@ -183,28 +223,41 @@ class ProcessingPipeline:
 
         # Split diff ops back to each image and process
         for record, ocr_words_data, start, end in image_slices:
-            image_ops = _split_diff_ops_for_image(all_diff_ops, start, end)
+            try:
+                image_ops = _split_diff_ops_for_image(all_diff_ops, start, end)
 
-            # Store per-image diff result (with local indices)
-            record.diff_result_json = json.dumps([asdict(op) for op in image_ops])
-            record.status = ImageStatus.DIFF_DONE
-            await self._db.commit()
+                # Store per-image diff result (with local indices + confidence)
+                ops_serialized = []
+                for op in image_ops:
+                    d = asdict(op)
+                    if op.ocr_index is not None and op.ocr_index < len(ocr_words_data):
+                        d["ocr_confidence"] = ocr_words_data[op.ocr_index].get("confidence")
+                    else:
+                        d["ocr_confidence"] = None
+                    ops_serialized.append(d)
+                record.diff_result_json = json.dumps(ops_serialized)
+                record.status = ImageStatus.DIFF_DONE
 
-            # Delete old annotations
-            existing = await self._db.execute(
-                select(WordAnnotation).where(WordAnnotation.image_id == record.id)
-            )
-            for a in existing.scalars().all():
-                await self._db.delete(a)
+                # Delete old annotations
+                existing = await self._db.execute(
+                    select(WordAnnotation).where(WordAnnotation.image_id == record.id)
+                )
+                for a in existing.scalars().all():
+                    await self._db.delete(a)
 
-            # Create new annotations
-            self._create_annotations(record.id, ocr_words_data, image_ops)
-            await self._db.commit()
+                # Create new annotations
+                self._create_annotations(record.id, ocr_words_data, image_ops)
 
-            # Render annotated image
-            await self._annotate_static_image(record, ocr_words_data, image_ops)
-            record.status = ImageStatus.ANNOTATED
-            await self._db.commit()
+                # Render annotated image
+                await self._annotate_static_image(record, ocr_words_data, image_ops)
+                record.status = ImageStatus.ANNOTATED
+
+                await self._db.commit()  # 单次原子提交
+
+            except Exception:
+                logger.exception("Failed diff/annotate for image %d", record.id)
+                await self._db.rollback()
+                await self._mark_image_failed(record.id, "Diff/annotate pipeline error")
 
     # ------------------------------------------------------------------
     # Shared helpers
@@ -265,7 +318,8 @@ class ProcessingPipeline:
         output_name = f"{record.task_id}_{record.id}_{uuid.uuid4().hex[:8]}.jpg"
         output_path = str(settings.annotated_dir / output_name)
 
-        annotate_image(
+        await asyncio.to_thread(
+            annotate_image,
             image_path=record.image_path,
             ocr_words=ocr_words_data,
             diff_ops=diff_ops,

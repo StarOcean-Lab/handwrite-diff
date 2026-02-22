@@ -15,7 +15,8 @@
     "close": "关闭",
     "confirm": "确认",
     "processing": "处理中…",
-    "newTask": "+ 新建任务"
+    "newTask": "+ 新建任务",
+    "providers": "模型提供商"
   },
   "home": {
     "title": "对比任务",
@@ -35,9 +36,21 @@
   },
   "newTask": {
     "title": "新建对比任务",
+    "subtitle": "上传手写图片，与参考文本进行自动对比分析",
+    "steps": {
+      "text": "参考文本",
+      "upload": "上传图片",
+      "confirm": "确认启动"
+    },
     "taskTitle": "任务标题",
     "taskTitlePlaceholder": "例如：听写材料 A",
-    "ocrModel": "OCR 模型",
+    "ocrProvider": "OCR 提供商",
+    "ocrModel": "OCR 模型（可选覆盖）",
+    "ocrModelPlaceholder": "留空使用提供商默认模型",
+    "useGlobalConfig": "使用全局配置（.env）",
+    "default": "默认",
+    "noProviderHint": "暂无提供商配置，请前往",
+    "manageProviders": "模型提供商管理",
     "referenceText": "参考文本",
     "referenceTextPlaceholder": "在此粘贴参考文本...",
     "fillRequired": "请填写任务标题和参考文本。",
@@ -59,6 +72,10 @@
     "backToTasks": "← 返回任务列表",
     "imageCount": "{total} 张图片 · {completed} 张已完成",
     "referenceText": "参考文本",
+    "editReferenceText": "编辑",
+    "saveReferenceText": "保存并重新对比",
+    "savingReferenceText": "保存中...",
+    "saveReferenceTextError": "保存参考文本失败",
     "processImages": "处理 {count} 张图片",
     "processError": "启动处理失败",
     "savingOrder": "正在保存新顺序...",
@@ -84,7 +101,16 @@
       "reviewed": "已审阅",
       "failed": "失败"
     },
-    "noImages": "暂无上传的图片。"
+    "noImages": "暂无上传的图片。",
+    "stats": {
+      "accuracy": "正确率",
+      "correct": "正确",
+      "wrong": "错误",
+      "missing": "缺失",
+      "extra": "多余"
+    },
+    "exportAllZip": "导出全部标注图",
+    "exportZipError": "导出失败"
   },
   "imageReview": {
     "back": "← 返回",
@@ -102,8 +128,11 @@
     "regenerateConfirm": "这将从当前 OCR 文本重新生成所有标注。手动编辑将丢失。确定继续吗？",
     "exportAnnotatedImage": "导出标注图片",
     "saveError": "保存标注失败",
+    "saveSuccess": "保存成功",
+    "regenerateSuccess": "重新标注完成",
     "imageNotFound": "图片未找到",
-    "noDiffData": "暂无差异数据。"
+    "noDiffData": "暂无差异数据。",
+    "lowConfidenceHint": "识别置信度：{pct}%，请核实"
   },
   "toolbar": {
     "select": "选择",
@@ -141,5 +170,57 @@
     "dragHint": "拖拽标注/标签调整位置，Ctrl+滚轮调整字体大小",
     "rendering": "渲染中...",
     "downloadError": "下载失败"
+  },
+  "providers": {
+    "title": "模型提供商管理",
+    "addProvider": "添加提供商",
+    "editProvider": "编辑提供商",
+    "loadError": "加载提供商失败",
+    "loading": "加载中...",
+    "noProviders": "暂无提供商",
+    "noProvidersHint": "点击「添加提供商」配置 OCR API。",
+    "default": "默认",
+    "setDefault": "设为默认",
+    "setDefaultError": "设置默认提供商失败",
+    "deleteConfirm": "确认删除提供商「{name}」？关联的任务将继续使用全局配置。",
+    "deleteError": "删除提供商失败",
+    "edit": "编辑",
+    "delete": "删除",
+    "name": "名称",
+    "namePlaceholder": "例如：Gemini 官方",
+    "baseUrl": "Base URL",
+    "apiKey": "API Key",
+    "apiKeyLabel": "API Key",
+    "apiKeyPlaceholder": "sk-...",
+    "apiKeyPlaceholderEdit": "留空保留原密钥",
+    "defaultModel": "默认模型",
+    "defaultModelLabel": "默认模型",
+    "setAsDefaultModel": "设为默认模型",
+    "modelsList": "可用模型列表",
+    "modelsListHint": "点选单选框设为默认，按 Enter 或点「添加」新增模型",
+    "addModel": "添加",
+    "addModelPlaceholder": "输入模型名，如 gemini-2.5-flash",
+    "removeModel": "移除",
+    "modelsRequired": "请至少添加一个模型。",
+    "defaultModelRequired": "请选择默认模型。",
+    "setAsDefault": "设为默认提供商",
+    "testConnection": "测试连接",
+    "testExpand": "选择模型测试 ▾",
+    "testCollapse": "收起 ▴",
+    "testSelectHint": "勾选要测试的模型，点击「开始测试」",
+    "testSelectAll": "全选",
+    "testSelectNone": "取消全选",
+    "testRun": "开始测试（{count} 个模型）",
+    "testRunning": "测试中… ({done}/{total})",
+    "testing": "测试中",
+    "testFillRequired": "新建时请先填写 Base URL 和 API Key",
+    "testError": "测试失败",
+    "testSuccess": "连接成功",
+    "fillRequired": "请填写名称、Base URL 和默认模型。",
+    "apiKeyRequired": "请填写 API Key。",
+    "saveError": "保存失败",
+    "saving": "保存中...",
+    "save": "保存",
+    "cancel": "取消"
   }
 }
