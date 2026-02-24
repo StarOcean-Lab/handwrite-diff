@@ -101,6 +101,12 @@ async def regenerate_annotations(
     if not record.ocr_raw_text:
         raise HTTPException(status_code=400, detail="No OCR data to regenerate from")
 
+    # Mark task as processing so the frontend can poll for completion
+    task = await db.get(ComparisonTask, record.task_id)
+    if task:
+        task.status = TaskStatus.PROCESSING
+        await db.commit()
+
     background_tasks.add_task(_run_regenerate, image_id)
     return {"status": "regenerating", "image_id": image_id}
 

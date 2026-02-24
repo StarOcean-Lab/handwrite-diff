@@ -334,10 +334,32 @@ export default function AnnotationEditor({
   const changeType = useCallback(
     (errorType: string) => {
       if (selectedId) {
+        const shapeForType: Record<string, string> = {
+          wrong: "ellipse",
+          extra: "underline",
+          missing: "caret",
+        };
         dispatch({
           type: "UPDATE",
           id: selectedId,
-          changes: { error_type: errorType, is_user_corrected: true },
+          changes: {
+            error_type: errorType,
+            annotation_shape: shapeForType[errorType] ?? "ellipse",
+            is_user_corrected: true,
+          },
+        });
+      }
+    },
+    [selectedId],
+  );
+
+  const changeReferenceWord = useCallback(
+    (word: string) => {
+      if (selectedId) {
+        dispatch({
+          type: "UPDATE",
+          id: selectedId,
+          changes: { reference_word: word || null, is_user_corrected: true },
         });
       }
     },
@@ -614,6 +636,9 @@ export default function AnnotationEditor({
             label_font_size: null,
           };
           dispatch({ type: "ADD", annotation: newAnnotation });
+          // Auto-select the newly drawn annotation so contextual controls
+          // (reference word input, font size, type buttons) appear immediately.
+          onSelect(newAnnotation._localId);
         }
       }
 
@@ -626,6 +651,11 @@ export default function AnnotationEditor({
   // ─── Render SVG ───
 
   const renderAnnotation = (a: LocalAnnotation) => {
+    // Correct annotations have no visual shape — they are already right.
+    // Exception: when selected (e.g. user clicked to inspect), still render
+    // so resize handles and selection ring are visible.
+    if (a.error_type === "correct" && a._localId !== selectedId) return null;
+
     const colors = TYPE_COLORS[a.error_type] ?? TYPE_COLORS.wrong;
     const isSelected = a._localId === selectedId;
     const s = annotationScale; // shorthand
@@ -828,5 +858,20 @@ export default function AnnotationEditor({
     deleteSelected,
     changeType,
     changeFontSize,
+    changeReferenceWord,
+    /** The currently selected annotation's data (null if nothing selected). */
+    selectedAnnotationData: selectedId
+      ? (() => {
+          const found = state.annotations.find((a) => a._localId === selectedId);
+          return found ? fromLocal(found) : null;
+        })()
+      : null,
+    /** Reset the editor to a new set of server annotations (clears undo/redo). */
+    reset: useCallback(
+      (newAnnotations: Annotation[]) => {
+        dispatch({ type: "SET", annotations: newAnnotations.map(toLocal) });
+      },
+      [],
+    ),
   };
 }

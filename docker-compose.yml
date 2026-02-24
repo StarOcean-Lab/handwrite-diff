@@ -12,7 +12,7 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///./handwrite_diff.db
+      - DATABASE_URL=sqlite+aiosqlite:////app/storage/handwrite_diff.db
       - DEBUG=true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]

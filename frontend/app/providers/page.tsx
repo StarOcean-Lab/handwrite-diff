@@ -16,7 +16,9 @@ export default function ProvidersPage() {
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [modalProvider, setModalProvider] = useState<ModelProvider | null | "new">(undefined as never);
+  const [modalProvider, setModalProvider] = useState<
+    ModelProvider | null | "new"
+  >(undefined as never);
   const [showModal, setShowModal] = useState(false);
 
   const loadProviders = useCallback(async () => {
@@ -61,7 +63,7 @@ export default function ProvidersPage() {
     try {
       const updated = await setDefaultProvider(p.id);
       setProviders((prev) =>
-        prev.map((x) => ({ ...x, is_default: x.id === updated.id }))
+        prev.map((x) => ({ ...x, is_default: x.id === updated.id })),
       );
     } catch (err) {
       alert(err instanceof Error ? err.message : t("setDefaultError"));
@@ -102,8 +104,12 @@ export default function ProvidersPage() {
 
       {!loading && providers.length === 0 && (
         <div className="rounded-xl border border-dashed border-[var(--color-border)] p-12 text-center">
-          <p className="mb-2 text-[var(--color-text-secondary)]">{t("noProviders")}</p>
-          <p className="text-sm text-[var(--color-text-secondary)]">{t("noProvidersHint")}</p>
+          <p className="mb-2 text-[var(--color-text-secondary)]">
+            {t("noProviders")}
+          </p>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            {t("noProvidersHint")}
+          </p>
         </div>
       )}
 
@@ -127,10 +133,12 @@ export default function ProvidersPage() {
                   {p.base_url}
                 </p>
                 <p className="text-sm text-[var(--color-text-secondary)]">
-                  {t("apiKeyLabel")}: <span className="font-mono">{p.api_key_masked}</span>
+                  {t("apiKeyLabel")}:{" "}
+                  <span className="font-mono">{p.api_key_masked}</span>
                 </p>
                 <p className="text-sm text-[var(--color-text-secondary)]">
-                  {t("defaultModelLabel")}: <span className="font-mono">{p.default_model}</span>
+                  {t("defaultModelLabel")}:{" "}
+                  <span className="font-mono">{p.default_model}</span>
                 </p>
               </div>
 

@@ -1,10 +1,9 @@
 """Pydantic schemas for ComparisonTask."""
 
-from datetime import datetime
-
 from pydantic import BaseModel, Field
 
 from app.models.comparison_task import TaskStatus
+from app.schemas.utils import UTCDatetime
 
 
 class TaskCreate(BaseModel):
@@ -29,7 +28,7 @@ class TaskResponse(BaseModel):
     ocr_model: str | None = None
     provider_id: int | None = None
     provider_name: str | None = None
-    created_at: datetime
+    created_at: UTCDatetime
 
     model_config = {"from_attributes": True}
 
@@ -44,7 +43,7 @@ class TaskListResponse(BaseModel):
     ocr_model: str | None = None
     provider_id: int | None = None
     provider_name: str | None = None
-    created_at: datetime
+    created_at: UTCDatetime
 
 
 class TaskListPaginated(BaseModel):

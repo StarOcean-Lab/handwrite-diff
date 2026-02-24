@@ -132,7 +132,33 @@
     "regenerateSuccess": "Annotations regenerated",
     "imageNotFound": "Image not found",
     "noDiffData": "No diff data available.",
-    "lowConfidenceHint": "Recognition confidence: {pct}%, please verify"
+    "lowConfidenceHint": "Recognition confidence: {pct}%, please verify",
+    "diffUndo": "Undo",
+    "diffRedo": "Redo",
+    "diffUndoHint": "Undo last diff correction (Ctrl+Z)",
+    "diffRedoHint": "Redo diff correction (Ctrl+Shift+Z)",
+    "correctionModal": {
+      "title": "Correct Word",
+      "ocrWord": "OCR Result",
+      "refWord": "Reference",
+      "diffType": "Diff Type",
+      "newWord": "Correct to",
+      "modify": "Modify",
+      "retype": "Change To",
+      "delete": "Delete",
+      "accept": "Accept",
+      "ignore": "Ignore Diff",
+      "apply": "Apply",
+      "cancel": "Cancel",
+      "typeWrong": "Wrong",
+      "typeExtra": "Extra",
+      "typeMissing": "Missing",
+      "typeCorrect": "Correct",
+      "mergeTitle": "Merge & Correct",
+      "merge": "Merge",
+      "selectedWords": "Selected Words",
+      "mergeHint": "Click \"Merge\" to enter the corrected word"
+    }
   },
   "toolbar": {
     "select": "Select",
@@ -167,9 +193,16 @@
     "title": "Export Annotated Image",
     "annotationScale": "Annotation Scale:",
     "fontSize": "Font Size:",
+    "correctContent": "Correct:",
+    "correctContentPlaceholder": "Enter correct word…",
     "dragHint": "Drag annotations/labels to adjust, Ctrl+scroll to resize font",
     "rendering": "Rendering...",
-    "downloadError": "Download failed"
+    "downloadError": "Download failed",
+    "saveDraft": "Save Draft",
+    "savingDraft": "Saving...",
+    "saveDraftSuccess": "Draft saved",
+    "saveDraftError": "Failed to save draft",
+    "unsavedChangesConfirm": "You have unsaved changes. Discard and close?"
   },
   "providers": {
     "title": "Model Provider Management",

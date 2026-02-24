@@ -3,12 +3,22 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
+const highlightBg: Record<string, string> = {
+  correct: "rounded bg-green-100 text-green-800",
+  wrong:   "rounded bg-red-100 text-red-800",
+  extra:   "rounded bg-orange-100 text-orange-800",
+  missing: "rounded bg-blue-100 text-blue-800",
+};
+
 interface OcrTextEditorProps {
   initialText: string;
   onSave: (text: string) => void;
   /** Called on every keystroke while editing (text) and when editing ends (null). */
   onTextChange?: (text: string | null) => void;
   disabled?: boolean;
+  /** Word index (0-based) to highlight in view mode. */
+  highlightWordIndex?: number | null;
+  highlightType?: string;
 }
 
 export default function OcrTextEditor({
@@ -16,6 +26,8 @@ export default function OcrTextEditor({
   onSave,
   onTextChange,
   disabled = false,
+  highlightWordIndex = null,
+  highlightType = "correct",
 }: OcrTextEditorProps) {
   const t = useTranslations("ocrEditor");
   const tc = useTranslations("common");
@@ -82,7 +94,23 @@ export default function OcrTextEditor({
         />
       ) : (
         <div className="rounded-lg bg-gray-50 p-3 text-sm whitespace-pre-wrap">
-          {text || <span className="text-[var(--color-text-secondary)]">{t("noText")}</span>}
+          {text
+            ? text.split(/(\s+)/).map((token, idx, arr) => {
+                // Tokens at even indices are words, odd are whitespace
+                const wordIdx = Math.floor(idx / 2);
+                const isWord = idx % 2 === 0;
+                if (!isWord) return token;
+                const isHighlighted = isWord && highlightWordIndex === wordIdx;
+                return (
+                  <span
+                    key={idx}
+                    className={isHighlighted ? highlightBg[highlightType] ?? highlightBg.correct : undefined}
+                  >
+                    {token}
+                  </span>
+                );
+              })
+            : <span className="text-[var(--color-text-secondary)]">{t("noText")}</span>}
         </div>
       )}
     </div>

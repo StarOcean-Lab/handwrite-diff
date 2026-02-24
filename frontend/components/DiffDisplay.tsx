@@ -13,9 +13,8 @@ interface DiffOp {
 }
 
 interface DiffDisplayProps {
-  ocrWords: string[];
-  referenceWords: string[];
   diffOps: DiffOp[];
+  onHover?: (index: number | null) => void;
 }
 
 const TYPE_STYLES: Record<string, string> = {
@@ -26,9 +25,9 @@ const TYPE_STYLES: Record<string, string> = {
 };
 
 const TYPE_ICONS: Record<string, string> = {
-  correct: "✓",
-  wrong: "✗",
-  extra: "−",
+  correct: "\u2713",
+  wrong: "\u2717",
+  extra: "\u2212",
   missing: "+",
 };
 
@@ -96,7 +95,10 @@ function Tooltip({ text, children, className = "" }: TooltipProps) {
 // DiffDisplay
 // ---------------------------------------------------------------------------
 
-export default function DiffDisplay({ diffOps }: DiffDisplayProps) {
+export default function DiffDisplay({
+  diffOps,
+  onHover,
+}: DiffDisplayProps) {
   const t = useTranslations("imageReview");
 
   if (!diffOps || diffOps.length === 0) {
@@ -110,13 +112,16 @@ export default function DiffDisplay({ diffOps }: DiffDisplayProps) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {diffOps.map((op, i) => {
+        // Skip hidden entries (non-first items in a merge group)
+        if (op.diff_type === "corrected_hidden") return null;
+
         const style = TYPE_STYLES[op.diff_type] || "";
         const icon = TYPE_ICONS[op.diff_type] || "";
         const display =
           op.diff_type === "missing"
             ? `^[${displayWord(op.reference_word)}]`
             : op.diff_type === "wrong"
-              ? `${displayWord(op.ocr_word)}→${displayWord(op.reference_word)}`
+              ? `${displayWord(op.ocr_word)}\u2192${displayWord(op.reference_word)}`
               : displayWord(op.ocr_word ?? op.reference_word);
 
         const isLowConfidence =
@@ -139,11 +144,13 @@ export default function DiffDisplay({ diffOps }: DiffDisplayProps) {
           <Tooltip key={i} text={tooltipText}>
             <span
               className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-sm ${style} ${lowConfidenceClass}`}
+              onMouseEnter={() => onHover?.(i)}
+              onMouseLeave={() => onHover?.(null)}
             >
               <span className="text-xs">{icon}</span>
               {display}
               {isLowConfidence && (
-                <span className="ml-0.5 text-xs text-amber-500" aria-hidden>⚠</span>
+                <span className="ml-0.5 text-xs text-amber-500" aria-hidden>&#9888;</span>
               )}
             </span>
           </Tooltip>

@@ -24,6 +24,13 @@ import {
   type Task,
 } from "@/lib/api";
 
+const refHighlightBg: Record<string, string> = {
+  correct: "rounded bg-green-100 text-green-800",
+  wrong:   "rounded bg-red-100 text-red-800",
+  extra:   "rounded bg-orange-100 text-orange-800",
+  missing: "rounded bg-blue-100 text-blue-800",
+};
+
 export default function ImageReviewPage() {
   const params = useParams();
   const router = useRouter();
@@ -47,6 +54,7 @@ export default function ImageReviewPage() {
   const [editingOcrText, setEditingOcrText] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [toast, setToast] = useState<{ message: string } | null>(null);
+  const [hoveredDiffIndex, setHoveredDiffIndex] = useState<number | null>(null);
 
   const showToast = useCallback((message: string) => {
     setToast({ message });
@@ -116,6 +124,7 @@ export default function ImageReviewPage() {
           bbox_x2: a.bbox_x2,
           bbox_y2: a.bbox_y2,
           is_auto: a.is_auto,
+          is_user_corrected: a.is_user_corrected,
           note: a.note,
           label_x: a.label_x,
           label_y: a.label_y,
@@ -185,6 +194,14 @@ export default function ImageReviewPage() {
 
   const displayDiffOps = liveDiffOps ?? (image?.diff_result as DiffDisplayDiffOp[] | null);
   const isLivePreview = liveDiffOps !== null;
+
+  // Hover highlight: which ref/ocr word index to highlight and with what color
+  const hoverHighlight = useMemo(() => {
+    if (hoveredDiffIndex === null || !displayDiffOps) return null;
+    const op = displayDiffOps[hoveredDiffIndex];
+    if (!op) return null;
+    return { refIndex: op.ref_index, ocrIndex: op.ocr_index, type: op.diff_type };
+  }, [hoveredDiffIndex, displayDiffOps]);
 
   if (loading) {
     return (
@@ -328,13 +345,26 @@ export default function ImageReviewPage() {
             {t("referenceText")}
           </div>
           <div className="p-4">
-            <div className="rounded-xl bg-slate-50 p-3 font-mono text-sm leading-relaxed whitespace-pre-wrap text-[var(--color-text)]">
-              {displayDiffOps
-                ?.filter((op) => op.ref_index !== null)
-                .map((op) => refWords[op.ref_index!] ?? op.reference_word)
-                .join(" ") || (
-                <span className="text-[var(--color-text-muted)]">—</span>
-              )}
+            <div className="rounded-xl bg-slate-50 p-3 font-mono text-sm leading-relaxed text-[var(--color-text)]">
+              {(() => {
+                // Only show reference words that appear in this image's diff ops
+                const entries = displayDiffOps
+                  ?.filter((op) => op.ref_index !== null)
+                  .map((op) => ({ word: refWords[op.ref_index!] ?? op.reference_word ?? "", globalIdx: op.ref_index! }))
+                  ?? [];
+                if (entries.length === 0) return <span className="text-[var(--color-text-muted)]">—</span>;
+                return entries.map(({ word, globalIdx }, i) => {
+                  const isHighlighted = hoverHighlight?.refIndex === globalIdx;
+                  return (
+                    <span key={i}>
+                      <span className={isHighlighted ? refHighlightBg[hoverHighlight!.type] ?? refHighlightBg.correct : undefined}>
+                        {word}
+                      </span>
+                      {i < entries.length - 1 ? " " : ""}
+                    </span>
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
@@ -345,6 +375,8 @@ export default function ImageReviewPage() {
               initialText={image.ocr_raw_text ?? ""}
               onSave={handleOcrSave}
               onTextChange={setEditingOcrText}
+              highlightWordIndex={hoverHighlight?.ocrIndex ?? null}
+              highlightType={hoverHighlight?.type}
             />
           </div>
         </div>
@@ -365,9 +397,8 @@ export default function ImageReviewPage() {
           </div>
           <div className="p-4">
             <DiffDisplay
-              ocrWords={isLivePreview ? editingOcrText!.split(/\s+/).filter(Boolean) : ocrWords}
-              referenceWords={refWords}
               diffOps={displayDiffOps as any}
+              onHover={setHoveredDiffIndex}
             />
           </div>
         </div>

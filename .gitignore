@@ -36,6 +36,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Generated outputs
+softcopyright-output/
+
 # Logs
 *.log
 npm-debug.log*

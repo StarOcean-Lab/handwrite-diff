@@ -233,7 +233,7 @@ export async function correctOcr(imageId: number, correctedText: string): Promis
 
 // --- Annotations ---
 
-export async function replaceAnnotations(imageId: number, annotations: Omit<Annotation, "id" | "image_id" | "is_user_corrected">[]): Promise<Annotation[]> {
+export async function replaceAnnotations(imageId: number, annotations: Omit<Annotation, "id" | "image_id">[]): Promise<Annotation[]> {
   const res = await fetch(`${BASE}/api/v1/images/${imageId}/annotations`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

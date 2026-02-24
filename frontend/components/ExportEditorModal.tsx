@@ -1,115 +1,134 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import ImageViewer from "@/components/ImageViewer";
+import AnnotationToolbar from "@/components/AnnotationToolbar";
 import useAnnotationEditor from "@/components/AnnotationEditor";
-import { getOriginalImageUrl, type Annotation } from "@/lib/api";
+import { resolveOverlaps } from "@/lib/overlap";
+import { getOriginalImageUrl, replaceAnnotations, type Annotation } from "@/lib/api";
+
+type ToolType = "select" | "ellipse" | "underline" | "caret";
 
 interface ExportEditorModalProps {
   imageId: number;
   annotations: Annotation[];
   imageLabel: string | null;
-  onClose: () => void;
+  /** Called on close; savedDraft=true means at least one draft save happened (parent should reload). */
+  onClose: (savedDraft: boolean) => void;
 }
 
-/** Error-type → Canvas stroke/fill color */
-const ANNOTATION_COLORS: Record<string, string> = {
-  wrong: "#ef4444",
-  extra: "#f97316",
-  missing: "#3b82f6",
+// Mirrors AnnotationEditor TYPE_COLORS exactly — single source of truth for export rendering
+const TYPE_COLORS: Record<string, { stroke: string; fill: string }> = {
+  wrong:   { stroke: "#dc2626", fill: "rgba(220,38,38,0.08)" },
+  extra:   { stroke: "#f97316", fill: "rgba(249,115,22,0.08)" },
+  missing: { stroke: "#2563eb", fill: "rgba(37,99,235,0.08)" },
+  correct: { stroke: "#16a34a", fill: "rgba(22,163,74,0.05)" },
 };
 
+function xmlEscape(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /**
- * Draw all annotations onto a Canvas using the browser Canvas 2D API.
- * Matches the visual style of the SVG overlay without any OpenCV processing.
+ * Build an SVG string that exactly mirrors AnnotationEditor.renderAnnotation():
+ * - Same shape geometry, colors, stroke widths, font sizes
+ * - Same resolveOverlaps() label y-offset algorithm
+ * - Same font family: Liberation Sans / Arial / Helvetica
+ *
+ * The resulting SVG is composited onto the export canvas so the download
+ * is pixel-for-pixel identical to what the user sees in the editor.
  */
-function drawAnnotations(
-  ctx: CanvasRenderingContext2D,
+function buildAnnotationSvg(
   annotations: Annotation[],
   scaleFactor: number,
+  imgWidth: number,
   imgHeight: number,
-): void {
-  // Mirror backend AnnotationStyle.scaled(): base thickness derived from image height
-  const baseThick = Math.max(2, Math.round(imgHeight / 300));
-  const thick = Math.max(1, Math.round(baseThick * scaleFactor));
-  const caretSize = Math.max(8, Math.round(16 * scaleFactor));
+): string {
+  // resolveOverlaps needs _localId; use stable index-based keys for export
+  const withLocalId = annotations.map((a, i) => ({ ...a, _localId: `e${i}` }));
+  const labelOffsets = resolveOverlaps(withLocalId);
+  const s = scaleFactor;
 
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
+  const parts: string[] = [];
 
-  for (const ann of annotations) {
-    const color = ANNOTATION_COLORS[ann.error_type] ?? "#888888";
-    const { bbox_x1: x1, bbox_y1: y1, bbox_x2: x2, bbox_y2: y2 } = ann;
-    const cx = (x1 + x2) / 2;
-    const cy = (y1 + y2) / 2;
-    const rx = (x2 - x1) / 2;
-    const ry = (y2 - y1) / 2;
+  for (const a of withLocalId) {
+    if (a.error_type === "correct") continue;
 
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = thick;
+    const colors = TYPE_COLORS[a.error_type] ?? TYPE_COLORS.wrong;
+    const strokeWidth = 2 * s;
+    const bboxHeight = a.bbox_y2 - a.bbox_y1;
+    const customFs = a.label_font_size;
+    const fontSize =
+      customFs != null && customFs > 0
+        ? customFs
+        : Math.max(
+            Math.min(Math.round(bboxHeight * 0.5 * s), 48 * s),
+            10 * s,
+          );
+    const labelYOffset = labelOffsets.get(a._localId) ?? 0;
 
-    switch (ann.annotation_shape) {
-      case "ellipse": {
-        // Red ellipse outline around WRONG words
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, rx + thick, ry + thick * 0.5, 0, 0, Math.PI * 2);
-        ctx.stroke();
+    // Mirror renderLabel(defaultX, defaultY) in AnnotationEditor
+    const labelSvg = (defaultX: number, defaultY: number): string => {
+      if (!a.reference_word) return "";
+      const lx = a.label_x ?? defaultX;
+      const ly = a.label_y ?? (defaultY + labelYOffset);
+      return (
+        `<text x="${lx}" y="${ly}" text-anchor="middle"` +
+        ` fill="${colors.stroke}" font-size="${fontSize}" font-weight="bold"` +
+        ` font-family="Liberation Sans, Arial, Helvetica, sans-serif">` +
+        `${xmlEscape(a.reference_word)}</text>`
+      );
+    };
 
-        // Reference word label above the ellipse
-        if (ann.reference_word) {
-          const fs = ann.label_font_size != null && ann.label_font_size > 0
-            ? ann.label_font_size
-            : Math.max(
-                Math.min(Math.round(ry * 2 * 0.5 * scaleFactor), 48 * scaleFactor),
-                10 * scaleFactor,
-              );
-          ctx.font = `bold ${Math.round(fs)}px sans-serif`;
-          ctx.textBaseline = "bottom";
-          const lx = ann.label_x ?? cx;
-          const ly = ann.label_y ?? (y1 - thick * 2);
-          ctx.fillText(ann.reference_word, lx, ly);
-        }
-        break;
-      }
-
-      case "underline": {
-        // Orange strikethrough line through the vertical center of EXTRA words
-        ctx.beginPath();
-        ctx.moveTo(x1, cy);
-        ctx.lineTo(x2, cy);
-        ctx.stroke();
-        break;
-      }
-
-      case "caret": {
-        // Blue ^ caret for MISSING words
-        ctx.beginPath();
-        ctx.moveTo(cx - caretSize, cy + caretSize / 2);
-        ctx.lineTo(cx, cy - caretSize / 2);
-        ctx.lineTo(cx + caretSize, cy + caretSize / 2);
-        ctx.stroke();
-
-        // Reference word label to the right of the caret
-        if (ann.reference_word) {
-          const bboxH = y2 - y1;
-          const fs = ann.label_font_size != null && ann.label_font_size > 0
-            ? ann.label_font_size
-            : Math.max(
-                Math.min(Math.round(bboxH * 0.5 * scaleFactor), 48 * scaleFactor),
-                10 * scaleFactor,
-              );
-          ctx.font = `bold ${Math.round(fs)}px sans-serif`;
-          ctx.textBaseline = "middle";
-          const lx = ann.label_x ?? (cx + caretSize + thick * 2);
-          const ly = ann.label_y ?? cy;
-          ctx.fillText(ann.reference_word, lx, ly);
-        }
-        break;
-      }
+    if (a.annotation_shape === "ellipse") {
+      const cx = (a.bbox_x1 + a.bbox_x2) / 2;
+      const cy = (a.bbox_y1 + a.bbox_y2) / 2;
+      const rx = (a.bbox_x2 - a.bbox_x1) / 2 + 4 * s;
+      const ry = (a.bbox_y2 - a.bbox_y1) / 2 + 3 * s;
+      parts.push(
+        `<g>` +
+        `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"` +
+        ` fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="${strokeWidth}"` +
+        ` stroke-linecap="round" stroke-linejoin="round"/>` +
+        labelSvg(cx, a.bbox_y1 - 8 * s) +
+        `</g>`,
+      );
+    } else if (a.annotation_shape === "underline") {
+      const lineY = a.bbox_y2 + 2 * s;
+      const midY = (a.bbox_y1 + a.bbox_y2) / 2;
+      parts.push(
+        `<g>` +
+        `<line x1="${a.bbox_x1}" y1="${lineY}" x2="${a.bbox_x2}" y2="${lineY}"` +
+        ` stroke="${colors.stroke}" stroke-width="${strokeWidth + s}" stroke-linecap="round"/>` +
+        `<line x1="${a.bbox_x1}" y1="${midY}" x2="${a.bbox_x2}" y2="${midY}"` +
+        ` stroke="${colors.stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" opacity="0.5"/>` +
+        `</g>`,
+      );
+    } else if (a.annotation_shape === "caret") {
+      const cx = (a.bbox_x1 + a.bbox_x2) / 2;
+      const top = a.bbox_y1;
+      const bottom = a.bbox_y2;
+      parts.push(
+        `<g>` +
+        `<polyline points="${cx - 8 * s},${bottom} ${cx},${top} ${cx + 8 * s},${bottom}"` +
+        ` fill="none" stroke="${colors.stroke}" stroke-width="${strokeWidth}"` +
+        ` stroke-linecap="round" stroke-linejoin="round"/>` +
+        labelSvg(cx, top - 6 * s) +
+        `</g>`,
+      );
     }
   }
+
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${imgWidth}" height="${imgHeight}">` +
+    parts.join("") +
+    `</svg>`
+  );
 }
 
 export default function ExportEditorModal({
@@ -132,15 +151,40 @@ export default function ExportEditorModal({
   const [imageSize, setImageSize] = useState({ w: 800, h: 600 });
   const [localAnnotations, setLocalAnnotations] = useState<Annotation[]>(annotations);
 
+  // Drawing tools state
+  const [activeTool, setActiveTool] = useState<ToolType>("select");
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  // Save draft state
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(false);
+  const draftSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track whether a draft was ever saved this session (to notify parent on close)
+  const [draftEverSaved, setDraftEverSaved] = useState(false);
+
+  // Dirty tracking: compare JSON snapshots to detect unsaved changes
+  const [savedAnnotationsJson, setSavedAnnotationsJson] = useState(
+    () => JSON.stringify(initialAnnotations),
+  );
+  const isDirty = useMemo(
+    () => JSON.stringify(localAnnotations) !== savedAnnotationsJson,
+    [localAnnotations, savedAnnotationsJson],
+  );
+
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleUndoRedoChange = useCallback(() => {}, []);
+  const handleUndoRedoChange = useCallback((u: boolean, r: boolean) => {
+    setCanUndo(u);
+    setCanRedo(r);
+  }, []);
 
   const editor = useAnnotationEditor({
     annotations,
     imageWidth: imageSize.w,
     imageHeight: imageSize.h,
-    activeTool: "select",
+    activeTool,
     selectedId,
     annotationScale: scaleFactor,
     onSelect: setSelectedId,
@@ -148,27 +192,83 @@ export default function ExportEditorModal({
     onUndoRedoChange: handleUndoRedoChange,
   });
 
+  // Use the editor's direct accessor to avoid the _localId stripping problem:
+  // fromLocal() strips _localId, so newly drawn annotations (id=0) can't be
+  // found by matching selectedId in localAnnotations.
+  const selectedAnnotation = editor.selectedAnnotationData;
+
+  /** Whether the selected annotation supports a user-editable reference word */
+  const showReferenceWordInput =
+    selectedAnnotation !== null &&
+    (selectedAnnotation.error_type === "wrong" || selectedAnnotation.error_type === "missing");
+
   const selectedFontSize = (() => {
-    if (!selectedId) return null;
-    const found = localAnnotations.find((a) => `server_${a.id}` === selectedId || (a as any)._localId === selectedId);
-    if (!found) return null;
-    const bboxH = found.bbox_y2 - found.bbox_y1;
-    return found.label_font_size != null && found.label_font_size > 0
-      ? found.label_font_size
+    if (!selectedAnnotation) return null;
+    const bboxH = selectedAnnotation.bbox_y2 - selectedAnnotation.bbox_y1;
+    return selectedAnnotation.label_font_size != null && selectedAnnotation.label_font_size > 0
+      ? selectedAnnotation.label_font_size
       : Math.max(Math.min(Math.round(bboxH * 0.5 * scaleFactor), 48 * scaleFactor), 10 * scaleFactor);
   })();
 
-  // ESC to close
+  /** Serialize annotations for replaceAnnotations API call */
+  const serializeAnnotations = useCallback(
+    (anns: Annotation[]) =>
+      anns.map((a) => ({
+        word_index: a.word_index,
+        ocr_word: a.ocr_word,
+        reference_word: a.reference_word,
+        error_type: a.error_type,
+        annotation_shape: a.annotation_shape,
+        bbox_x1: a.bbox_x1,
+        bbox_y1: a.bbox_y1,
+        bbox_x2: a.bbox_x2,
+        bbox_y2: a.bbox_y2,
+        is_auto: a.is_auto,
+        is_user_corrected: a.is_user_corrected,
+        note: a.note,
+        label_x: a.label_x,
+        label_y: a.label_y,
+        label_font_size: a.label_font_size,
+      })),
+    [],
+  );
+
+  /** Save draft to backend */
+  const handleSaveDraft = useCallback(async () => {
+    setSavingDraft(true);
+    setError(null);
+    try {
+      await replaceAnnotations(imageId, serializeAnnotations(localAnnotations));
+      setSavedAnnotationsJson(JSON.stringify(localAnnotations));
+      setDraftEverSaved(true);
+      setDraftSaved(true);
+      // Clear previous timer to avoid overlapping resets
+      if (draftSavedTimerRef.current) clearTimeout(draftSavedTimerRef.current);
+      draftSavedTimerRef.current = setTimeout(() => setDraftSaved(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("saveDraftError"));
+    } finally {
+      setSavingDraft(false);
+    }
+  }, [imageId, localAnnotations, serializeAnnotations, t]);
+
+  /** Close with dirty-check confirmation */
+  const handleClose = useCallback(() => {
+    if (isDirty && !window.confirm(t("unsavedChangesConfirm"))) return;
+    onClose(draftEverSaved);
+  }, [isDirty, draftEverSaved, onClose, t]);
+
+  // ESC to close (with dirty check)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        handleClose();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [handleClose]);
 
   // Prevent body scrolling while modal is open
   useEffect(() => {
@@ -179,31 +279,31 @@ export default function ExportEditorModal({
     };
   }, []);
 
+  // Clear draft-saved timer on unmount
+  useEffect(() => {
+    return () => {
+      if (draftSavedTimerRef.current) clearTimeout(draftSavedTimerRef.current);
+    };
+  }, []);
+
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
-      onClose();
+      handleClose();
     }
   };
 
   /**
-   * Canvas-based export — draws the original image then overlays annotations
-   * using browser Canvas 2D API.  No backend round-trip, no OpenCV processing.
+   * SVG-composite export — draws the original image, then overlays an SVG
+   * built from the same rendering logic as AnnotationEditor (same shapes,
+   * colors, font family, label offsets via resolveOverlaps).
+   *
+   * This guarantees the downloaded JPEG is pixel-for-pixel identical to what
+   * the user sees in the editor — true WYSIWYG export.
    */
   const handleDownload = async () => {
     setDownloading(true);
     setError(null);
     try {
-      // Resolve effective font sizes for every annotation
-      const annotationsWithFontSizes = localAnnotations.map((a) => {
-        if (a.label_font_size != null && a.label_font_size > 0) return a;
-        const bboxH = a.bbox_y2 - a.bbox_y1;
-        const defaultFs = Math.max(
-          Math.min(Math.round(bboxH * 0.5 * scaleFactor), 48 * scaleFactor),
-          10 * scaleFactor,
-        );
-        return { ...a, label_font_size: defaultFs };
-      });
-
       // Fetch the original image and decode it as a bitmap
       const resp = await fetch(getOriginalImageUrl(imageId));
       if (!resp.ok) throw new Error(`Failed to fetch image: ${resp.status}`);
@@ -221,15 +321,32 @@ export default function ExportEditorModal({
       ctx.drawImage(bitmap, 0, 0);
       bitmap.close();
 
-      // 2. Overlay annotations using Canvas API
-      drawAnnotations(ctx, annotationsWithFontSizes, scaleFactor, canvas.height);
+      // 2. Build SVG overlay — mirrors AnnotationEditor rendering exactly
+      const svgStr = buildAnnotationSvg(
+        localAnnotations,
+        scaleFactor,
+        canvas.width,
+        canvas.height,
+      );
+      const svgBlob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+      const svgUrl = URL.createObjectURL(svgBlob);
+      try {
+        const svgImg = new Image();
+        await new Promise<void>((resolve, reject) => {
+          svgImg.onload = () => resolve();
+          svgImg.onerror = () => reject(new Error("Failed to render SVG overlay"));
+          svgImg.src = svgUrl;
+        });
+        ctx.drawImage(svgImg, 0, 0, canvas.width, canvas.height);
+      } finally {
+        URL.revokeObjectURL(svgUrl);
+      }
 
-      // 3. Export as JPEG blob
+      // 3. Export as PNG blob (lossless — preserves annotation sharpness)
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(
           (b) => (b ? resolve(b) : reject(new Error("Canvas.toBlob returned null"))),
-          "image/jpeg",
-          0.95,
+          "image/png",
         );
       });
 
@@ -237,7 +354,7 @@ export default function ExportEditorModal({
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `annotated_${imageLabel || imageId}.jpg`;
+      link.download = `annotated_${imageLabel || imageId}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -264,7 +381,7 @@ export default function ExportEditorModal({
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-6 py-4">
           <h2 className="text-lg font-bold">{t("title")}</h2>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
             aria-label={tc("close")}
           >
@@ -274,7 +391,22 @@ export default function ExportEditorModal({
           </button>
         </div>
 
-        {/* Toolbar */}
+        {/* Drawing Toolbar */}
+        <div className="border-b border-[var(--color-border)] bg-gray-50 px-4 py-2">
+          <AnnotationToolbar
+            activeTool={activeTool}
+            onToolChange={setActiveTool}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={editor.undo}
+            onRedo={editor.redo}
+            selectedAnnotation={selectedId ? 1 : null}
+            onDeleteSelected={editor.deleteSelected}
+            onChangeType={editor.changeType}
+          />
+        </div>
+
+        {/* Scale / Font-size Toolbar */}
         <div className="flex flex-wrap items-center gap-4 border-b border-[var(--color-border)] bg-gray-50 px-6 py-3">
           <label className="text-sm font-medium text-[var(--color-text-secondary)]">
             {t("annotationScale")}
@@ -318,6 +450,26 @@ export default function ExportEditorModal({
               </span>
             </>
           )}
+          {/* Reference word input — visible for wrong / missing annotations */}
+          {showReferenceWordInput && selectedAnnotation && (
+            <>
+              <div className="mx-2 h-5 w-px bg-gray-300" />
+              <label className="text-sm font-medium text-[var(--color-text-secondary)]">
+                {t("correctContent")}
+              </label>
+              <input
+                type="text"
+                value={selectedAnnotation.reference_word ?? ""}
+                onChange={(e) => editor.changeReferenceWord(e.target.value)}
+                placeholder={t("correctContentPlaceholder")}
+                className={`w-36 rounded border px-2 py-1 text-sm outline-none focus:ring-1 ${
+                  selectedAnnotation.error_type === "wrong"
+                    ? "border-red-300 focus:border-red-400 focus:ring-red-200"
+                    : "border-blue-300 focus:border-blue-400 focus:ring-blue-200"
+                }`}
+              />
+            </>
+          )}
           <span className="ml-auto text-xs text-[var(--color-text-secondary)]">
             {t("dragHint")}
           </span>
@@ -338,17 +490,35 @@ export default function ExportEditorModal({
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-[var(--color-border)] px-6 py-4">
-          <div>
+          {/* Left: feedback messages */}
+          <div className="flex items-center gap-3">
             {error && (
               <span className="text-sm text-red-500">{error}</span>
             )}
+            {draftSaved && !error && (
+              <span className="flex items-center gap-1 text-sm text-green-600">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M2.5 7L5.5 10L11.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                {t("saveDraftSuccess")}
+              </span>
+            )}
           </div>
+
+          {/* Right: action buttons */}
           <div className="flex items-center gap-3">
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="rounded-lg border border-[var(--color-border)] px-5 py-2.5 text-sm font-medium hover:bg-gray-50"
             >
               {tc("cancel")}
+            </button>
+            <button
+              onClick={handleSaveDraft}
+              disabled={savingDraft || !isDirty}
+              className="rounded-lg border border-[var(--color-border)] px-5 py-2.5 text-sm font-medium text-[var(--color-text-secondary)] hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {savingDraft ? t("savingDraft") : t("saveDraft")}
             </button>
             <button
               onClick={handleDownload}

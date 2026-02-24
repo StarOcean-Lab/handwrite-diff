@@ -132,7 +132,33 @@
     "regenerateSuccess": "重新标注完成",
     "imageNotFound": "图片未找到",
     "noDiffData": "暂无差异数据。",
-    "lowConfidenceHint": "识别置信度：{pct}%，请核实"
+    "lowConfidenceHint": "识别置信度：{pct}%，请核实",
+    "diffUndo": "撤销",
+    "diffRedo": "重做",
+    "diffUndoHint": "撤销上一次对比修正 (Ctrl+Z)",
+    "diffRedoHint": "重做对比修正 (Ctrl+Shift+Z)",
+    "correctionModal": {
+      "title": "修正词语",
+      "ocrWord": "OCR 识别",
+      "refWord": "参考文本",
+      "diffType": "差异类型",
+      "newWord": "修正为",
+      "modify": "修改",
+      "retype": "改写",
+      "delete": "删除",
+      "accept": "接受",
+      "ignore": "忽略差异",
+      "apply": "应用",
+      "cancel": "取消",
+      "typeWrong": "错误",
+      "typeExtra": "多余",
+      "typeMissing": "缺失",
+      "typeCorrect": "正确",
+      "mergeTitle": "合并修正",
+      "merge": "合并",
+      "selectedWords": "选中词语",
+      "mergeHint": "选择「合并」输入修正后的词语"
+    }
   },
   "toolbar": {
     "select": "选择",
@@ -167,9 +193,16 @@
     "title": "导出标注图片",
     "annotationScale": "标注缩放：",
     "fontSize": "字体大小：",
+    "correctContent": "正确内容：",
+    "correctContentPlaceholder": "输入正确内容…",
     "dragHint": "拖拽标注/标签调整位置，Ctrl+滚轮调整字体大小",
     "rendering": "渲染中...",
-    "downloadError": "下载失败"
+    "downloadError": "下载失败",
+    "saveDraft": "保存草稿",
+    "savingDraft": "保存中...",
+    "saveDraftSuccess": "草稿已保存",
+    "saveDraftError": "保存草稿失败",
+    "unsavedChangesConfirm": "您有未保存的更改，确认放弃并关闭？"
   },
   "providers": {
     "title": "模型提供商管理",

@@ -16,6 +16,7 @@ class AnnotationCreate(BaseModel):
     bbox_x2: float = 0.0
     bbox_y2: float = 0.0
     is_auto: bool = False
+    is_user_corrected: bool = False
     note: str | None = None
     label_x: float | None = None
     label_y: float | None = None

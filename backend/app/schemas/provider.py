@@ -1,9 +1,10 @@
 """Pydantic schemas for ModelProvider."""
 
 import json
-from datetime import datetime
 
 from pydantic import BaseModel, Field
+
+from app.schemas.utils import UTCDatetime
 
 
 def _mask_api_key(key: str) -> str:
@@ -51,8 +52,8 @@ class ProviderResponse(BaseModel):
     default_model: str
     models: list[str]
     is_default: bool
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDatetime
+    updated_at: UTCDatetime
 
     model_config = {"from_attributes": True}
 

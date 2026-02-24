@@ -4,7 +4,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import FileUploader from "@/components/FileUploader";
-import { createTask, listProviders, triggerProcessing, uploadImages, type ModelProvider } from "@/lib/api";
+import {
+  createTask,
+  listProviders,
+  triggerProcessing,
+  uploadImages,
+  type ModelProvider,
+} from "@/lib/api";
 
 type Step = "text" | "upload" | "confirm";
 const STEPS: Step[] = ["text", "upload", "confirm"];
@@ -34,11 +40,24 @@ function StepIndicator({ current }: { current: Step }) {
                       ? "text-white shadow-md"
                       : "bg-slate-100 text-[var(--color-text-muted)]"
                 }`}
-                style={active ? { background: "linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)" } : {}}
+                style={
+                  active
+                    ? {
+                        background:
+                          "linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)",
+                      }
+                    : {}
+                }
               >
                 {done ? (
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M2.5 7L5.5 10L11.5 4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path
+                      d="M2.5 7L5.5 10L11.5 4"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                 ) : (
                   i + 1
@@ -46,16 +65,25 @@ function StepIndicator({ current }: { current: Step }) {
               </div>
               <span
                 className={`mt-1.5 text-xs font-medium ${
-                  active ? "text-[var(--color-primary)]" : done ? "text-emerald-600" : "text-[var(--color-text-muted)]"
+                  active
+                    ? "text-[var(--color-primary)]"
+                    : done
+                      ? "text-emerald-600"
+                      : "text-[var(--color-text-muted)]"
                 }`}
               >
                 {stepLabels[s]}
               </span>
             </div>
             {i < STEPS.length - 1 && (
-              <div className="mx-2 h-px flex-1 transition-colors duration-300" style={{
-                background: done ? "linear-gradient(90deg, #10b981, #34d399)" : "var(--color-border)",
-              }} />
+              <div
+                className="mx-2 h-px flex-1 transition-colors duration-300"
+                style={{
+                  background: done
+                    ? "linear-gradient(90deg, #10b981, #34d399)"
+                    : "var(--color-border)",
+                }}
+              />
             )}
           </div>
         );
@@ -87,7 +115,9 @@ export default function NewTaskPage() {
 
   // Provider state
   const [providers, setProviders] = useState<ModelProvider[]>([]);
-  const [selectedProviderId, setSelectedProviderId] = useState<number | null>(null);
+  const [selectedProviderId, setSelectedProviderId] = useState<number | null>(
+    null,
+  );
 
   useEffect(() => {
     listProviders()
@@ -169,17 +199,38 @@ export default function NewTaskPage() {
   return (
     <div className="mx-auto max-w-xl animate-fade-in">
       <div className="mb-8">
-        <h1 className="text-xl font-bold text-[var(--color-text)]">{t("title")}</h1>
-        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{t("subtitle")}</p>
+        <h1 className="text-xl font-bold text-[var(--color-text)]">
+          {t("title")}
+        </h1>
+        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+          {t("subtitle")}
+        </p>
       </div>
 
       <StepIndicator current={step} />
 
       {error && (
         <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3.5 text-sm text-red-700">
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" className="flex-shrink-0">
-            <circle cx="7.5" cy="7.5" r="6.5" stroke="#dc2626" strokeWidth="1.5"/>
-            <path d="M7.5 4.5V8M7.5 10.5H7.51" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 15 15"
+            fill="none"
+            className="flex-shrink-0"
+          >
+            <circle
+              cx="7.5"
+              cy="7.5"
+              r="6.5"
+              stroke="#dc2626"
+              strokeWidth="1.5"
+            />
+            <path
+              d="M7.5 4.5V8M7.5 10.5H7.51"
+              stroke="#dc2626"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
           </svg>
           {error}
         </div>
@@ -210,13 +261,33 @@ export default function NewTaskPage() {
                 </label>
                 {providers.length === 0 ? (
                   <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-sm text-amber-700">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-0.5 flex-shrink-0">
-                      <path d="M8 2L14.5 13.5H1.5L8 2Z" stroke="#d97706" strokeWidth="1.5" fill="none" strokeLinejoin="round"/>
-                      <path d="M8 6.5V9.5M8 11.5H8.01" stroke="#d97706" strokeWidth="1.5" strokeLinecap="round"/>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      className="mt-0.5 flex-shrink-0"
+                    >
+                      <path
+                        d="M8 2L14.5 13.5H1.5L8 2Z"
+                        stroke="#d97706"
+                        strokeWidth="1.5"
+                        fill="none"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M8 6.5V9.5M8 11.5H8.01"
+                        stroke="#d97706"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
                     </svg>
                     <span>
                       {t("noProviderHint")}{" "}
-                      <a href="/providers" className="font-semibold underline underline-offset-2">
+                      <a
+                        href="/providers"
+                        className="font-semibold underline underline-offset-2"
+                      >
                         {t("manageProviders")}
                       </a>
                     </span>
@@ -230,7 +301,8 @@ export default function NewTaskPage() {
                     <option value="">{t("useGlobalConfig")}</option>
                     {providers.map((p) => (
                       <option key={p.id} value={p.id.toString()}>
-                        {p.name}{p.is_default ? ` (${t("default")})` : ""}
+                        {p.name}
+                        {p.is_default ? ` (${t("default")})` : ""}
                       </option>
                     ))}
                   </select>
@@ -243,7 +315,9 @@ export default function NewTaskPage() {
                   {t("ocrModel")}
                 </label>
                 {(() => {
-                  const selectedProvider = providers.find((p) => p.id === selectedProviderId);
+                  const selectedProvider = providers.find(
+                    (p) => p.id === selectedProviderId,
+                  );
                   const modelList = selectedProvider?.models ?? [];
                   if (modelList.length > 0) {
                     return (
@@ -254,7 +328,10 @@ export default function NewTaskPage() {
                       >
                         {modelList.map((m) => (
                           <option key={m} value={m}>
-                            {m}{m === selectedProvider?.default_model ? ` (${t("default")})` : ""}
+                            {m}
+                            {m === selectedProvider?.default_model
+                              ? ` (${t("default")})`
+                              : ""}
                           </option>
                         ))}
                       </select>
@@ -292,13 +369,32 @@ export default function NewTaskPage() {
             onClick={handleTextNext}
             disabled={submitting}
             className={primaryBtnCls}
-            style={{ background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)" }}
+            style={{
+              background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+            }}
           >
             {submitting ? (
               <>
-                <svg className="animate-spin" width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <circle cx="7" cy="7" r="5.5" stroke="rgba(255,255,255,0.4)" strokeWidth="2"/>
-                  <path d="M7 1.5A5.5 5.5 0 0112.5 7" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                <svg
+                  className="animate-spin"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                >
+                  <circle
+                    cx="7"
+                    cy="7"
+                    r="5.5"
+                    stroke="rgba(255,255,255,0.4)"
+                    strokeWidth="2"
+                  />
+                  <path
+                    d="M7 1.5A5.5 5.5 0 0112.5 7"
+                    stroke="white"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
                 </svg>
                 {t("creating")}
               </>
@@ -306,7 +402,13 @@ export default function NewTaskPage() {
               <>
                 {t("nextUpload")}
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M3 7H11M7.5 3.5L11 7L7.5 10.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path
+                    d="M3 7H11M7.5 3.5L11 7L7.5 10.5"
+                    stroke="white"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
               </>
             )}
@@ -321,23 +423,39 @@ export default function NewTaskPage() {
             <FileUploader onFilesSelected={setFiles} />
           </div>
           <div className="flex gap-3">
-            <button
-              onClick={() => setStep("text")}
-              className={secondaryBtnCls}
-            >
+            <button onClick={() => setStep("text")} className={secondaryBtnCls}>
               {t("back")}
             </button>
             <button
               onClick={handleUploadNext}
               disabled={submitting || files.length === 0}
               className={primaryBtnCls}
-              style={{ background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)" }}
+              style={{
+                background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+              }}
             >
               {submitting ? (
                 <>
-                  <svg className="animate-spin" width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <circle cx="7" cy="7" r="5.5" stroke="rgba(255,255,255,0.4)" strokeWidth="2"/>
-                    <path d="M7 1.5A5.5 5.5 0 0112.5 7" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  <svg
+                    className="animate-spin"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                  >
+                    <circle
+                      cx="7"
+                      cy="7"
+                      r="5.5"
+                      stroke="rgba(255,255,255,0.4)"
+                      strokeWidth="2"
+                    />
+                    <path
+                      d="M7 1.5A5.5 5.5 0 0112.5 7"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
                   </svg>
                   {t("uploading")}
                 </>
@@ -355,11 +473,26 @@ export default function NewTaskPage() {
           <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-teal-50 p-8 text-center shadow-[var(--shadow-sm)]">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-[var(--shadow-md)]">
               <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                <circle cx="14" cy="14" r="13" fill="#dcfce7" stroke="#16a34a" strokeWidth="1.5"/>
-                <path d="M8 14.5L11.5 18L20 10" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle
+                  cx="14"
+                  cy="14"
+                  r="13"
+                  fill="#dcfce7"
+                  stroke="#16a34a"
+                  strokeWidth="1.5"
+                />
+                <path
+                  d="M8 14.5L11.5 18L20 10"
+                  stroke="#16a34a"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
             </div>
-            <h2 className="mb-1.5 text-lg font-semibold text-[var(--color-text)]">{t("readyTitle")}</h2>
+            <h2 className="mb-1.5 text-lg font-semibold text-[var(--color-text)]">
+              {t("readyTitle")}
+            </h2>
             <p className="text-sm text-[var(--color-text-secondary)]">
               {t("readyDesc", { title, count: files.length })}
             </p>
@@ -368,20 +501,45 @@ export default function NewTaskPage() {
             onClick={handleStart}
             disabled={submitting}
             className={primaryBtnCls}
-            style={{ background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)" }}
+            style={{
+              background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+            }}
           >
             {submitting ? (
               <>
-                <svg className="animate-spin" width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <circle cx="7" cy="7" r="5.5" stroke="rgba(255,255,255,0.4)" strokeWidth="2"/>
-                  <path d="M7 1.5A5.5 5.5 0 0112.5 7" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                <svg
+                  className="animate-spin"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                >
+                  <circle
+                    cx="7"
+                    cy="7"
+                    r="5.5"
+                    stroke="rgba(255,255,255,0.4)"
+                    strokeWidth="2"
+                  />
+                  <path
+                    d="M7 1.5A5.5 5.5 0 0112.5 7"
+                    stroke="white"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
                 </svg>
                 {t("starting")}
               </>
             ) : (
               <>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M3 7L11 7M8.5 4.5L11 7L8.5 9.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path
+                    d="M3 7L11 7M8.5 4.5L11 7L8.5 9.5"
+                    stroke="white"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
                 {t("startProcessing")}
               </>

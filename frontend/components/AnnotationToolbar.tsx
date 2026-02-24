@@ -12,6 +12,8 @@ interface AnnotationToolbarProps {
   selectedAnnotation: number | null;
   onDeleteSelected: () => void;
   onChangeType: (type: string) => void;
+  /** When false, only the "select" tool button is shown (default: true) */
+  showDrawTools?: boolean;
 }
 
 // SVG icons for tools — no emoji
@@ -78,16 +80,19 @@ export default function AnnotationToolbar({
   selectedAnnotation,
   onDeleteSelected,
   onChangeType,
+  showDrawTools = true,
 }: AnnotationToolbarProps) {
   const t = useTranslations("toolbar");
   const tc = useTranslations("common");
 
-  const tools = [
+  const allTools = [
     { id: "select" as const, label: t("select"), Icon: IconSelect },
     { id: "ellipse" as const, label: t("ellipse"), Icon: IconEllipse },
     { id: "underline" as const, label: t("underline"), Icon: IconUnderline },
     { id: "caret" as const, label: t("caret"), Icon: IconCaret },
   ];
+
+  const tools = showDrawTools ? allTools : allTools.slice(0, 1);
 
   const errorTypes = [
     { value: "wrong", label: t("wrong"), cls: "text-[var(--color-wrong)] hover:bg-red-50" },

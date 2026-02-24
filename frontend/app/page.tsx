@@ -75,7 +75,13 @@ function TaskCard({ task, onDelete }: { task: TaskListItem; onDelete: (id: numbe
       {/* Footer */}
       <div className="flex items-center justify-between">
         <time className="text-xs text-[var(--color-text-muted)]" dateTime={task.created_at}>
-          {new Date(task.created_at).toLocaleDateString()}
+          {new Date(task.created_at).toLocaleString(undefined, {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
         </time>
         <button
           onClick={(e) => {

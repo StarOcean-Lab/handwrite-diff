@@ -1,10 +1,9 @@
 """Pydantic schemas for ImageRecord."""
 
-from datetime import datetime
-
 from pydantic import BaseModel
 
 from app.models.image_record import ImageStatus
+from app.schemas.utils import UTCDatetime
 
 
 class OcrWord(BaseModel):
@@ -24,7 +23,7 @@ class ImageResponse(BaseModel):
     diff_result: list[dict] | None = None
     status: ImageStatus
     error_message: str | None
-    created_at: datetime
+    created_at: UTCDatetime
 
     model_config = {"from_attributes": True}
 
@@ -36,7 +35,7 @@ class ImageListItem(BaseModel):
     sort_order: int
     status: ImageStatus
     error_message: str | None
-    created_at: datetime
+    created_at: UTCDatetime
 
     model_config = {"from_attributes": True}
 

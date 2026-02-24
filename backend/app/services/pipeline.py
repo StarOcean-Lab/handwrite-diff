@@ -226,7 +226,33 @@ class ProcessingPipeline:
             try:
                 image_ops = _split_diff_ops_for_image(all_diff_ops, start, end)
 
-                # Store per-image diff result (with local indices + confidence)
+                # ── Preserve user-corrected annotations ──
+                existing_q = await self._db.execute(
+                    select(WordAnnotation).where(WordAnnotation.image_id == record.id)
+                )
+                existing_annotations = existing_q.scalars().all()
+
+                # Collect user corrections keyed by word_index (ocr_index)
+                user_corrections: dict[int | None, WordAnnotation] = {}
+                for a in existing_annotations:
+                    if a.is_user_corrected:
+                        user_corrections[a.word_index] = a
+
+                if user_corrections:
+                    logger.info(
+                        "Image %d: loaded %d user corrections: %s",
+                        record.id, len(user_corrections),
+                        {k: (v.ocr_word, v.reference_word, v.error_type.value,
+                             f"bbox=({v.bbox_x1:.0f},{v.bbox_y1:.0f},{v.bbox_x2:.0f},{v.bbox_y2:.0f})")
+                         for k, v in user_corrections.items()},
+                    )
+
+                # Apply user corrections to diff ops for this image
+                if user_corrections:
+                    image_ops = _apply_user_corrections(image_ops, user_corrections)
+
+                # Store per-image diff result (hidden members keep original ref_word
+                # so the frontend re-pairing pass can display orphaned refs correctly)
                 ops_serialized = []
                 for op in image_ops:
                     d = asdict(op)
@@ -238,18 +264,39 @@ class ProcessingPipeline:
                 record.diff_result_json = json.dumps(ops_serialized)
                 record.status = ImageStatus.DIFF_DONE
 
-                # Delete old annotations
-                existing = await self._db.execute(
-                    select(WordAnnotation).where(WordAnnotation.image_id == record.id)
+                # Apply merge re-pairing for annotation rendering: suppress hidden
+                # members and re-pair orphaned ref words with subsequent EXTRA ops,
+                # mirroring the frontend computeDisplayDiffOps re-pairing pass so
+                # the annotated image matches the diff display.
+                annotate_ops = (
+                    _apply_merge_repairing(image_ops, user_corrections)
+                    if user_corrections
+                    else image_ops
                 )
-                for a in existing.scalars().all():
+
+                # Delete old annotations
+                for a in existing_annotations:
                     await self._db.delete(a)
 
-                # Create new annotations
-                self._create_annotations(record.id, ocr_words_data, image_ops)
+                # Create new annotations (using re-paired ops for accurate visual annotation)
+                self._create_annotations(record.id, ocr_words_data, annotate_ops,
+                                         user_corrections)
 
-                # Render annotated image
-                await self._annotate_static_image(record, ocr_words_data, image_ops)
+                # Build ocr_words copy with merged bboxes for annotation rendering
+                annotate_ocr_words = list(ocr_words_data)
+                if user_corrections:
+                    annotate_ocr_words = [dict(w) for w in ocr_words_data]
+                    for uc_idx, uc in user_corrections.items():
+                        if (uc_idx is not None and uc_idx < len(annotate_ocr_words)
+                                and (uc.bbox_x2 - uc.bbox_x1) > 1
+                                and (uc.bbox_y2 - uc.bbox_y1) > 1):
+                            annotate_ocr_words[uc_idx] = {
+                                **annotate_ocr_words[uc_idx],
+                                "bbox": [uc.bbox_x1, uc.bbox_y1, uc.bbox_x2, uc.bbox_y2],
+                            }
+
+                # Render annotated image (using re-paired ops)
+                await self._annotate_static_image(record, annotate_ocr_words, annotate_ops)
                 record.status = ImageStatus.ANNOTATED
 
                 await self._db.commit()  # 单次原子提交
@@ -268,15 +315,30 @@ class ProcessingPipeline:
         image_id: int,
         ocr_words_data: list[dict],
         diff_ops: list[DiffOp],
+        user_corrections: dict[int | None, "WordAnnotation"] | None = None,
     ) -> None:
-        """Create WordAnnotation ORM records from diff operations."""
+        """Create WordAnnotation ORM records from diff operations.
+
+        If *user_corrections* is provided, annotations matching a user-corrected
+        word_index will inherit the ``is_user_corrected`` flag so the correction
+        survives future rediff cycles.
+        """
+        if user_corrections is None:
+            user_corrections = {}
+
         for op in diff_ops:
             if op.diff_type == DiffType.CORRECT:
-                continue
+                # Still create annotation for user-corrected "correct" entries
+                # so the correction flag is preserved
+                if op.ocr_index not in user_corrections:
+                    continue
 
-            # Determine bbox
+            # Determine bbox — prefer user-corrected bbox (merged words have union bbox)
             bbox = (0.0, 0.0, 0.0, 0.0)
-            if op.ocr_index is not None and op.ocr_index < len(ocr_words_data):
+            uc = user_corrections.get(op.ocr_index)
+            if uc is not None and (uc.bbox_x2 - uc.bbox_x1) > 1 and (uc.bbox_y2 - uc.bbox_y1) > 1:
+                bbox = (uc.bbox_x1, uc.bbox_y1, uc.bbox_x2, uc.bbox_y2)
+            elif op.ocr_index is not None and op.ocr_index < len(ocr_words_data):
                 b = ocr_words_data[op.ocr_index]["bbox"]
                 bbox = (b[0], b[1], b[2], b[3])
             elif op.diff_type == DiffType.MISSING:
@@ -288,6 +350,10 @@ class ProcessingPipeline:
                 DiffType.EXTRA: AnnotationShape.UNDERLINE,
                 DiffType.MISSING: AnnotationShape.CARET,
             }
+
+            # Preserve user correction metadata (label position, font size, etc.)
+            is_corrected = op.ocr_index in user_corrections
+            # uc already retrieved above for bbox determination
 
             annotation = WordAnnotation(
                 image_id=image_id,
@@ -301,7 +367,10 @@ class ProcessingPipeline:
                 bbox_x2=bbox[2],
                 bbox_y2=bbox[3],
                 is_auto=True,
-                is_user_corrected=False,
+                is_user_corrected=is_corrected,
+                label_x=uc.label_x if uc else None,
+                label_y=uc.label_y if uc else None,
+                label_font_size=uc.label_font_size if uc else None,
             )
             self._db.add(annotation)
 
@@ -416,6 +485,173 @@ def _infer_missing_bbox(
         return (x1, next_bbox[1], x2, next_bbox[3])
 
     return (0.0, 0.0, 0.0, 0.0)
+
+
+# ------------------------------------------------------------------
+# ------------------------------------------------------------------
+# Module-level helper: apply user corrections to DiffOps
+# ------------------------------------------------------------------
+
+def _build_hidden_word_indices(
+    user_corrections: dict[int | None, "WordAnnotation"],
+) -> set[int]:
+    """Return the set of word_indices that are merge hidden members.
+
+    A merge leader has ``ocr_word`` containing a space (e.g. "great foods").
+    Hidden members are the consecutive word_indices after the leader within
+    the same merge group.
+    """
+    hidden: set[int] = set()
+    for word_idx, uc in user_corrections.items():
+        if word_idx is None or not uc.ocr_word or " " not in uc.ocr_word:
+            continue
+        word_count = len(uc.ocr_word.split(" "))
+        for off in range(1, word_count):
+            hidden.add(word_idx + off)
+    return hidden
+
+
+def _apply_user_corrections(
+    diff_ops: list[DiffOp],
+    user_corrections: dict[int | None, "WordAnnotation"],
+) -> list[DiffOp]:
+    """Override diff ops with user-corrected reference_word and error_type.
+
+    For each diff op whose ``ocr_index`` matches a user-corrected annotation,
+    replace the ``reference_word`` and ``diff_type`` with the user's values.
+    This ensures user corrections survive rediff cycles.
+
+    Merge hidden members (word_indices covered by a merge leader's OCR span)
+    are intentionally skipped: their original difflib reference_word is
+    preserved in the output so that:
+    - ``diff_result_json`` retains the correct ref word for the frontend
+      re-pairing pass (computeDisplayDiffOps).
+    - ``_apply_merge_repairing`` can later suppress them and re-pair
+      orphaned ref words with subsequent EXTRA ops for the annotated image.
+    """
+    hidden_word_indices = _build_hidden_word_indices(user_corrections)
+
+    result: list[DiffOp] = []
+    for op in diff_ops:
+        uc = user_corrections.get(op.ocr_index)
+        if uc is not None:
+            if op.ocr_index in hidden_word_indices:
+                # Hidden merge member: preserve original diff op so its
+                # reference_word survives in diff_result_json.
+                logger.debug(
+                    "Hidden merge member skipped: ocr_index=%s, ocr=%r, ref=%r",
+                    op.ocr_index, op.ocr_word, op.reference_word,
+                )
+                result.append(op)
+                continue
+            # Map ErrorType enum back to DiffType
+            corrected_diff_type = DiffType(uc.error_type.value)
+            merged_ocr = uc.ocr_word if uc.ocr_word else op.ocr_word
+            logger.debug(
+                "User correction applied: ocr_index=%s, orig_ocr=%r → merged_ocr=%r, "
+                "ref=%r, type=%s, uc_bbox=(%.0f,%.0f,%.0f,%.0f)",
+                op.ocr_index, op.ocr_word, merged_ocr,
+                uc.reference_word, corrected_diff_type.value,
+                uc.bbox_x1, uc.bbox_y1, uc.bbox_x2, uc.bbox_y2,
+            )
+            result.append(DiffOp(
+                diff_type=corrected_diff_type,
+                ocr_index=op.ocr_index,
+                ref_index=op.ref_index,
+                ocr_word=merged_ocr,  # use merged ocr_word if available
+                reference_word=uc.reference_word,
+            ))
+        else:
+            result.append(op)
+    return result
+
+
+def _apply_merge_repairing(
+    diff_ops: list[DiffOp],
+    user_corrections: dict[int | None, "WordAnnotation"],
+) -> list[DiffOp]:
+    """Suppress merge hidden members and re-pair orphaned ref words with EXTRA ops.
+
+    After ``_apply_user_corrections``, merge hidden members retain their
+    original diff ops (with the original difflib reference_word).  This
+    function mirrors the frontend ``computeDisplayDiffOps`` re-pairing pass
+    so that the annotated image matches what the diff display shows:
+
+    1. Identifies hidden members from merge leader annotations.
+    2. For each hidden member with an orphaned reference word (ref ≠ ocr_word):
+       - Scans forward for the next available EXTRA op (stopping at alignment
+         anchors: CORRECT or MISSING).
+       - Re-pairs: EXTRA → WRONG with the orphaned ref word.
+    3. Suppresses all hidden members (sets to CORRECT so the annotator skips them).
+    """
+    hidden_word_indices = _build_hidden_word_indices(user_corrections)
+
+    # Map hidden word_index → its leader's reference_word (the merge target)
+    hidden_to_leader_ref: dict[int, str] = {}
+    for word_idx, uc in user_corrections.items():
+        if word_idx is None or not uc.ocr_word or " " not in uc.ocr_word:
+            continue
+        word_count = len(uc.ocr_word.split(" "))
+        leader_ref = uc.reference_word or ""
+        for off in range(1, word_count):
+            hidden_to_leader_ref[word_idx + off] = leader_ref
+
+    if not hidden_word_indices:
+        return diff_ops
+
+    result: list[DiffOp] = list(diff_ops)
+    used_extra_positions: set[int] = set()
+
+    for i, op in enumerate(result):
+        if op.ocr_index is None or op.ocr_index not in hidden_word_indices:
+            continue
+
+        # Always suppress hidden members (CORRECT → annotator skips them)
+        suppressed = DiffOp(
+            diff_type=DiffType.CORRECT,
+            ocr_index=op.ocr_index,
+            ref_index=op.ref_index,
+            ocr_word=op.ocr_word,
+            reference_word=op.reference_word,
+        )
+
+        if not op.reference_word or op.reference_word == op.ocr_word:
+            # No orphaned ref — suppress silently
+            result[i] = suppressed
+            continue
+
+        # Cross-line guard: if hidden member's reference_word equals the
+        # leader's reference_word (the merge target, e.g. "grapefruit"),
+        # the leader already accounts for it — suppress without consuming EXTRA.
+        leader_ref = hidden_to_leader_ref.get(op.ocr_index, "")
+        if leader_ref and op.reference_word == leader_ref:
+            result[i] = suppressed
+            continue
+
+        # Orphaned ref: pair with the next available EXTRA op
+        for j in range(i + 1, len(result)):
+            if j in used_extra_positions:
+                continue
+            jop = result[j]
+            if jop.ocr_index in hidden_word_indices:
+                continue  # skip other hidden members
+            if jop.diff_type == DiffType.EXTRA:
+                result[j] = DiffOp(
+                    diff_type=DiffType.WRONG,
+                    ocr_index=jop.ocr_index,
+                    ref_index=jop.ref_index,
+                    ocr_word=jop.ocr_word,
+                    reference_word=op.reference_word,
+                )
+                used_extra_positions.add(j)
+                break
+            # Stop at alignment anchors
+            if jop.diff_type in (DiffType.CORRECT, DiffType.MISSING):
+                break
+
+        result[i] = suppressed
+
+    return result
 
 
 # ------------------------------------------------------------------
