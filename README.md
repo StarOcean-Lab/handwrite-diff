@@ -10,9 +10,11 @@
 - **图像预处理** — 自动纠偏（Hough 直线检测）+ CLAHE 对比度增强，提升 OCR 精度
 - **词级 bbox 精化** — 自适应阈值收紧粗糙的 OCR 边界框
 - **逐词对比** — 基于 LCS 算法的 word-level diff，支持英文缩写展开（can't ↔ cannot）和数字等价（"two" == "2"）
+- **短语级标注** — 相邻错误词自动合并为词组标注块，减少标注密度，提升可读性
 - **可视化标注** — 三种标注类型：红色椭圆（错误）、橙色删除线（多余）、蓝色插入符（遗漏）
 - **交互式编辑器** — SVG 叠加层支持选择、移动、缩放、新增、删除标注，Undo/Redo
-- **实时预览** — 编辑 OCR 文本时客户端即时重新计算 diff
+- **词级修正** — 点击 Diff 条目弹出修正弹窗，支持合并词（merge）、修改参考词（modify）、重新归类（retype）、忽略等操作
+- **实时预览** — 编辑 OCR 文本或应用修正时客户端即时重新计算 diff
 - **拖拽排序** — 图片支持拖拽排序，自动重新计算 diff
 - **批量导出** — 已完成任务一键下载全部标注图 ZIP；单张图片支持自定义标注缩放和字体导出
 - **双语界面** — 中文 / English 一键切换
@@ -30,12 +32,13 @@ handwrite-diff/
 │   │   ├── schemas/          # Pydantic v2 请求/响应 DTO
 │   │   ├── routers/          # /api/v1/ 路由（tasks, images, providers）
 │   │   └── services/
-│   │       ├── ocr_service.py    # Gemini Vision OCR（词级别）
-│   │       ├── preprocessing.py  # 图像预处理（纠偏 + CLAHE）
-│   │       ├── bbox_refiner.py   # OCR bbox 自适应精化
-│   │       ├── diff_engine.py    # SequenceMatcher 逐词对比
-│   │       ├── annotator.py      # OpenCV 图像标注渲染
-│   │       └── pipeline.py       # 处理流水线编排
+│   │       ├── ocr_service.py        # Gemini Vision OCR（词级别）
+│   │       ├── preprocessing.py      # 图像预处理（纠偏 + CLAHE）
+│   │       ├── bbox_refiner.py       # OCR bbox 自适应精化
+│   │       ├── diff_engine.py        # SequenceMatcher 逐词对比
+│   │       ├── annotation_planner.py # 错误词合并为短语标注块
+│   │       ├── annotator.py          # OpenCV 图像标注渲染
+│   │       └── pipeline.py           # 处理流水线编排
 │   ├── storage/              # 运行时存储：uploads/ + annotated/
 │   └── tests/
 ├── frontend/         Next.js 15 + React 19 + Tailwind v4
@@ -45,6 +48,7 @@ handwrite-diff/
 │   ├── messages/             # zh.json + en.json 翻译文件
 │   ├── hooks/                # usePolling 等自定义 Hook
 │   └── lib/                  # API 客户端、diff 引擎、标签重叠解算
+│       └── __tests__/        # Vitest 单元测试
 └── README.md
 ```
 
@@ -175,6 +179,7 @@ docker compose exec backend bash
    - 选择、移动、缩放、新增、删除标注
    - Undo/Redo（Ctrl+Z / Ctrl+Shift+Z）
    - 编辑 OCR 文本并实时预览 diff
+   - 点击 Diff 条目进行词级修正（合并词、修改参考词、忽略等）
    - 重新生成标注
    - 导出单张标注图片（可调整缩放和字体）
 6. **批量导出** — 任务完成后在详情页点击「导出全部标注图」下载 ZIP
@@ -200,6 +205,8 @@ Bbox 精化（自适应阈值收紧边界框）
     ↓
 逐词对比（LCS + 缩写展开，全图片拼接后单次 diff）
     ↓ DiffOp 列表：CORRECT / WRONG / EXTRA / MISSING
+短语标注规划（相邻错误词合并为词组块，上限 4 词）
+    ↓ AnnotationBlock 列表
 标注渲染（OpenCV）
     ↓ 标注后的 JPG 图片
 持久化到数据库（WordAnnotation 记录）
@@ -287,7 +294,21 @@ pytest tests/test_diff_engine.py
 pytest tests/test_diff_engine.py::TestComputeWordDiff::test_single_replacement -v
 ```
 
-测试不依赖 GPU 或 Gemini API — `test_diff_engine.py` 和 `test_annotator.py` 使用合成数据测试纯逻辑。
+测试不依赖 GPU 或 Gemini API — `test_diff_engine.py`、`test_annotator.py` 和 `test_annotation_planner.py` 使用合成数据测试纯逻辑。
+
+### 前端测试
+
+```bash
+cd frontend
+
+# 运行单元测试（watch 模式）
+npx vitest
+
+# 单次运行（CI）
+npx vitest run
+```
+
+前端测试使用 **Vitest**，测试文件位于 `frontend/lib/__tests__/`。
 
 ## 国际化
 

@@ -26,8 +26,9 @@ The core flow lives in `backend/app/services/pipeline.py` (`ProcessingPipeline`)
 4. **Concatenate**: All images' OCR words are concatenated in `sort_order` to form one big word list.
 5. **Diff** (`diff_engine.py`): Single `difflib.SequenceMatcher` diff on the concatenated list vs. reference. Produces `DiffOp` list with types: CORRECT, WRONG, MISSING, EXTRA. Includes number-word equivalence (e.g., "two" == "2").
 6. **Split back**: `_split_diff_ops_for_image` re-maps global diff ops back to per-image local indices.
-7. **Annotate** (`annotator.py`): Draws onto original image with OpenCV -- red ellipses for WRONG, orange strikethrough for EXTRA, blue carets for MISSING. MISSING words use bbox inferred from neighbors.
-8. **Persist**: Each step updates `ImageRecord.status` so frontend can poll progress.
+7. **Plan annotations** (`annotation_planner.py`): Greedy left-to-right scan that merges adjacent error ops on the same line into phrase-level `AnnotationBlock`s (up to `MAX_PHRASE_SIZE=4`). Proximity checks: vertical-centre distance < 0.6× avg height (same line), horizontal gap < 2× avg height (adjacent). Falls back to SINGLE blocks when pure-MISSING run, label too wide, or cross-line.
+8. **Annotate** (`annotator.py`): Draws onto original image with OpenCV -- red ellipses for WRONG, orange strikethrough for EXTRA, blue carets for MISSING. MISSING words use bbox inferred from neighbors.
+9. **Persist**: Each step updates `ImageRecord.status` so frontend can poll progress.
 
 `rediff_task()` re-runs Phase 2 only (skips OCR), called after image reordering or OCR text correction.
 
@@ -45,8 +46,13 @@ CPU-intensive steps (`preprocess_for_ocr`, `refine_word_bboxes`, `annotate_image
 - `/` -- Task list with status badges and progress bars
 - `/new` -- 3-step wizard: enter reference text -> upload images -> trigger processing
 - `/tasks/[taskId]` -- Task detail with image grid, stats row, polling progress during processing. Shows export-all-zip button when task is completed.
-- `/tasks/[taskId]/images/[imageId]` -- Image review: side-by-side original + interactive SVG annotation editor, OCR text editor, word-by-word diff display. Annotations support undo/redo (`useReducer` with past/future stacks), drag-to-move, draw new shapes, keyboard shortcuts (Ctrl+Z, Delete).
+- `/tasks/[taskId]/images/[imageId]` -- Image review: side-by-side original + interactive SVG annotation editor, OCR text editor, word-by-word diff display. Annotations support undo/redo (`useReducer` with past/future stacks), drag-to-move, draw new shapes, keyboard shortcuts (Ctrl+Z, Delete). Clicking a diff entry opens `DiffCorrectionModal` for word-level corrections (merge, modify, retype, accept, ignore).
 - `/providers` -- Provider management: list/create/edit/delete OCR providers, set default, expandable connection test panel (tests individual models against stored or inline credentials, shows latency).
+
+### Key Frontend Utilities
+
+- `frontend/lib/computeDisplayDiffOps.ts`: Pure functions for computing display diff ops with user corrections applied. `computeDisplayDiffOps()` handles merge leaders/hidden members, retype, modify, ignore, and includes a re-pairing pass that elevates orphaned-ref hidden members + subsequent EXTRA ops into WRONG. Extracted from the page component so it can be unit-tested without React.
+- `rebuildCorrectedEntries()` reconstructs the correction map from annotations + diff_result after round-trips (e.g. page reload).
 
 ## Commands
 
@@ -88,6 +94,15 @@ npm run build
 
 # Lint
 npm run lint
+
+# Run unit tests (Vitest)
+npx vitest
+
+# Run tests once (CI mode)
+npx vitest run
+
+# Run a single test file
+npx vitest run lib/__tests__/computeDisplayDiffOps.test.ts
 ```
 
 ### Running both together
@@ -141,8 +156,10 @@ CORS_ORIGINS=http://localhost:3000      # comma-separated if multiple
 - **Provider management**: `ModelProvider` table + `/api/v1/providers` router handles multi-provider OCR config. API keys are always masked in responses. `POST /{id}/test-models` tests stored credentials; `POST /test` tests ephemeral credentials without saving. 15-second timeout on test calls.
 - **Batch export**: `GET /api/v1/tasks/{id}/export-zip` streams all annotated images as a ZIP. Files are named `01_<label>.jpg` in sort_order. Frontend triggers download via `exportTaskZip()` in `lib/api.ts`.
 
+- **UTC datetime serialization**: `backend/app/schemas/utils.py` provides `UTCDatetime` — a Pydantic annotated type that treats naive SQLite datetimes as UTC, so browsers receive timezone-aware ISO strings.
+
 ## Testing
 
-Backend tests use `pytest` + `pytest-asyncio` + `httpx.AsyncClient` (ASGI transport). The `test_api.py` integration tests create/drop all tables per test via the `setup_db` fixture. Tests do **not** require GPU or API calls -- `test_diff_engine.py` and `test_annotator.py` test pure logic with synthetic data.
+Backend tests use `pytest` + `pytest-asyncio` + `httpx.AsyncClient` (ASGI transport). The `test_api.py` integration tests create/drop all tables per test via the `setup_db` fixture. Tests do **not** require GPU or API calls -- `test_diff_engine.py`, `test_annotator.py`, and `test_annotation_planner.py` test pure logic with synthetic data.
 
-No frontend tests exist yet.
+Frontend unit tests use **Vitest** (configured in `frontend/vitest.config.ts`). Tests live in `frontend/lib/__tests__/`. Currently covers `computeDisplayDiffOps.ts`. Run with `npx vitest run` from `frontend/`.

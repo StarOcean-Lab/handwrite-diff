@@ -10,9 +10,11 @@ A handwriting comparison tool that identifies differences between handwritten te
 - **Image Preprocessing** — Auto-deskew (Hough line detection) + CLAHE contrast enhancement for better OCR accuracy
 - **Bbox Refinement** — Adaptive thresholding to tighten coarse OCR bounding boxes
 - **Word-Level Diff** — LCS-based comparison with contraction expansion (can't ↔ cannot) and number equivalence ("two" == "2")
+- **Phrase-Level Annotations** — Adjacent error words are automatically merged into phrase blocks, reducing label density and improving readability
 - **Visual Annotations** — Three types: red ellipse (wrong), orange strikethrough (extra), blue caret (missing)
 - **Interactive Editor** — SVG overlay with select, move, resize, create, delete annotations, Undo/Redo
-- **Live Preview** — Client-side real-time diff recomputation while editing OCR text
+- **Word-Level Correction** — Click any diff entry to open a correction modal: merge words, modify reference, retype classification, accept, or ignore
+- **Live Preview** — Client-side real-time diff recomputation while editing OCR text or applying corrections
 - **Drag & Drop Sorting** — Reorder images with automatic diff recalculation
 - **Batch Export** — One-click ZIP download of all annotated images for a completed task; single-image export with customizable scale and font
 - **Bilingual UI** — Chinese / English toggle
@@ -30,12 +32,13 @@ handwrite-diff/
 │   │   ├── schemas/          # Pydantic v2 request/response DTOs
 │   │   ├── routers/          # /api/v1/ routes (tasks, images, providers)
 │   │   └── services/
-│   │       ├── ocr_service.py    # Gemini Vision OCR (word-level)
-│   │       ├── preprocessing.py  # Image preprocessing (deskew + CLAHE)
-│   │       ├── bbox_refiner.py   # Adaptive bbox tightening
-│   │       ├── diff_engine.py    # SequenceMatcher word diff
-│   │       ├── annotator.py      # OpenCV annotation rendering
-│   │       └── pipeline.py       # Processing orchestration
+│   │       ├── ocr_service.py        # Gemini Vision OCR (word-level)
+│   │       ├── preprocessing.py      # Image preprocessing (deskew + CLAHE)
+│   │       ├── bbox_refiner.py       # Adaptive bbox tightening
+│   │       ├── diff_engine.py        # SequenceMatcher word diff
+│   │       ├── annotation_planner.py # Merge error words into phrase blocks
+│   │       ├── annotator.py          # OpenCV annotation rendering
+│   │       └── pipeline.py           # Processing orchestration
 │   ├── storage/              # Runtime: uploads/ + annotated/
 │   └── tests/
 ├── frontend/         Next.js 15 + React 19 + Tailwind v4
@@ -45,6 +48,7 @@ handwrite-diff/
 │   ├── messages/             # zh.json + en.json
 │   ├── hooks/                # usePolling custom hook
 │   └── lib/                  # API client, diff engine, overlap resolver
+│       └── __tests__/        # Vitest unit tests
 └── README.md
 ```
 
@@ -175,6 +179,7 @@ docker compose exec backend bash
    - Select, move, resize, create, delete annotations
    - Undo/Redo (Ctrl+Z / Ctrl+Shift+Z)
    - Edit OCR text with live diff preview
+   - Apply word-level corrections via modal (merge, modify reference, ignore, etc.)
    - Regenerate annotations
    - Export single annotated image (adjustable scale and font)
 6. **Batch Export** — Click "Export All Annotated" on the task detail page to download a ZIP of all annotated images
@@ -200,6 +205,8 @@ Bbox Refinement (adaptive thresholding)
     ↓
 Word Diff (LCS + contraction handling, single diff across all images concatenated)
     ↓ DiffOp list: CORRECT / WRONG / EXTRA / MISSING
+Annotation Planning (merge adjacent error words into phrase blocks, max 4 words)
+    ↓ AnnotationBlock list
 Annotation Rendering (OpenCV)
     ↓ annotated JPG
 Persist to DB (WordAnnotation records)
@@ -287,7 +294,21 @@ pytest tests/test_diff_engine.py
 pytest tests/test_diff_engine.py::TestComputeWordDiff::test_single_replacement -v
 ```
 
-Tests do not require GPU or Gemini API — `test_diff_engine.py` and `test_annotator.py` test pure logic with synthetic data.
+Tests do not require GPU or Gemini API — `test_diff_engine.py`, `test_annotator.py`, and `test_annotation_planner.py` test pure logic with synthetic data.
+
+### Frontend Tests
+
+```bash
+cd frontend
+
+# Run unit tests (watch mode)
+npx vitest
+
+# Single run (CI)
+npx vitest run
+```
+
+Frontend tests use **Vitest**, with test files in `frontend/lib/__tests__/`.
 
 ## i18n
 
