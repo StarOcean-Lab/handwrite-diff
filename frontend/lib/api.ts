@@ -435,3 +435,12 @@ export async function exportTaskZip(taskId: number): Promise<void> {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// --- Rediff ---
+
+export async function rediffImage(imageId: number): Promise<void> {
+  const res = await fetch(`${BASE}/api/v1/images/${imageId}/rediff`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to rediff");
+}

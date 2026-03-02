@@ -3,6 +3,8 @@
  * Kept separate so they can be unit-tested without a React environment.
  */
 
+import type { Annotation } from "./api";
+
 export interface RawDiffOp {
   diff_type: string;
   ocr_index: number | null;
@@ -181,4 +183,76 @@ export function computeDisplayDiffOps(
     }
     return op;
   });
+}
+
+/**
+ * Convert annotations to diff ops for immediate display after saving.
+ *
+ * This function is used when the user saves manual annotations - we want
+ * to immediately show the updated diff result in the UI without waiting
+ * for the backend to recalculate. The backend rediff happens asynchronously.
+ *
+ * @param annotations - The saved annotations (may include user corrections)
+ * @param ocrWords - OCR words from the image
+ * @param refWords - Reference words from the task
+ * @returns Diff ops reflecting the annotation changes
+ */
+export function annotationsToDiffOps(
+  annotations: Annotation[],
+  ocrWords: { text: string }[],
+  refWords: string[],
+): RawDiffOp[] {
+  // Create word_index -> annotation mapping
+  const annotMap = new Map<number, Annotation>();
+  for (const a of annotations) {
+    if (a.word_index !== null && a.word_index !== undefined) {
+      annotMap.set(a.word_index, a);
+    }
+  }
+
+  const diffOps: RawDiffOp[] = [];
+
+  // Process OCR words - generate diff ops based on annotations
+  for (let i = 0; i < ocrWords.length; i++) {
+    const annot = annotMap.get(i);
+    const ocrWord = ocrWords[i]?.text ?? "";
+    const refWord = refWords[i] ?? "";
+
+    if (annot) {
+      // Use annotation data (user-modified) - but if error_type is 'correct',
+      // we should mark it as correct even if the words differ
+      const isCorrect = annot.error_type === "correct";
+      diffOps.push({
+        diff_type: annot.error_type,
+        ocr_index: i,
+        ref_index: i,
+        ocr_word: isCorrect ? ocrWord : (annot.ocr_word ?? ocrWord),
+        reference_word: isCorrect ? refWord : (annot.reference_word ?? refWord),
+      });
+    } else {
+      // No annotation - default to correct
+      diffOps.push({
+        diff_type: "correct",
+        ocr_index: i,
+        ref_index: i,
+        ocr_word: ocrWord,
+        reference_word: refWord,
+      });
+    }
+  }
+
+  // Handle annotations beyond the original OCR word count (new annotations)
+  for (const [idx, annot] of annotMap) {
+    if (idx >= ocrWords.length) {
+      diffOps.push({
+        diff_type: annot.error_type,
+        ocr_index: idx,
+        ref_index: idx,
+        ocr_word: annot.ocr_word ?? "",
+        reference_word: annot.reference_word ?? "",
+      });
+    }
+  }
+
+  return diffOps;
 }

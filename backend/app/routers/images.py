@@ -388,6 +388,82 @@ async def delete_annotation(image_id: int, annot_id: int, db: DB) -> None:
     await db.commit()
 
 
+@router.post("/api/v1/images/{image_id}/rediff")
+async def rediff_image(image_id: int, db: DB) -> dict:
+    """Recalculate diff_result based on current annotations.
+
+    Called after user manually edits and saves annotations. The frontend
+    immediately shows the updated diff using local computation, while this
+    endpoint asynchronously persists the updated diff_result to the database.
+    """
+    record = await db.get(ImageRecord, image_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    # Get annotations and reference words
+    result = await db.execute(
+        select(WordAnnotation).where(WordAnnotation.image_id == image_id)
+    )
+    annot_list = result.scalars().all()
+
+    task = await db.get(ComparisonTask, record.task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    ref_words = json.loads(task.reference_words) if task.reference_words else []
+
+    # Build diff ops from annotations
+    diff_ops: list[dict] = []
+    for a in annot_list:
+        if a.word_index is None:
+            continue
+        # If error_type is 'correct', show the words as matching
+        is_correct = a.error_type == "correct"
+        if is_correct:
+            # For correct type, use actual OCR and reference words
+            ocr_text = ocr_words[a.word_index].get("text", "") if a.word_index < len(ocr_words) else ""
+            ref_text = ref_words[a.word_index] if a.word_index < len(ref_words) else ""
+            diff_ops.append({
+                "diff_type": "correct",
+                "ocr_index": a.word_index,
+                "ref_index": a.word_index,
+                "ocr_word": ocr_text,
+                "reference_word": ref_text,
+            })
+        else:
+            diff_ops.append({
+                "diff_type": a.error_type,
+                "ocr_index": a.word_index,
+                "ref_index": a.word_index,
+                "ocr_word": a.ocr_word,
+                "reference_word": a.reference_word,
+            })
+
+    # Also need to add entries for OCR words that don't have annotations (default to correct)
+    ocr_words = json.loads(record.ocr_words_json) if record.ocr_words_json else []
+    existing_indices = {a.word_index for a in annot_list if a.word_index is not None}
+
+    for idx, ocr_word in enumerate(ocr_words):
+        if idx not in existing_indices:
+            diff_ops.append({
+                "diff_type": "correct",
+                "ocr_index": idx,
+                "ref_index": idx,
+                "ocr_word": ocr_word.get("text", ""),
+                "reference_word": ref_words[idx] if idx < len(ref_words) else "",
+            })
+
+    # Sort by ocr_index for consistent display
+    diff_ops.sort(key=lambda x: x["ocr_index"] if x["ocr_index"] is not None else 0)
+
+    # Update diff_result_json
+    record.diff_result_json = json.dumps(diff_ops)
+    record.status = ImageStatus.DIFF_DONE
+    await db.commit()
+
+    return {"status": "ok"}
+
+
 @router.post("/api/v1/images/{image_id}/render-export")
 async def render_export(
     image_id: int,

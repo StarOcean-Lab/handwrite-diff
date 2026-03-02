@@ -10,12 +10,14 @@ import ExportEditorModal from "@/components/ExportEditorModal";
 import DiffDisplay from "@/components/DiffDisplay";
 import OcrTextEditor from "@/components/OcrTextEditor";
 import { computeWordDiff, type DiffOp as DiffDisplayDiffOp } from "@/lib/diff";
+import { annotationsToDiffOps, computeDisplayDiffOps } from "@/lib/computeDisplayDiffOps";
 import {
   correctOcr,
   getImageDetail,
   getOriginalImageUrl,
   getTask,
   listTaskImages,
+  rediffImage,
   regenerateAnnotations,
   replaceAnnotations,
   type Annotation,
@@ -55,6 +57,7 @@ export default function ImageReviewPage() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [toast, setToast] = useState<{ message: string } | null>(null);
   const [hoveredDiffIndex, setHoveredDiffIndex] = useState<number | null>(null);
+  const [useLocalDiffOps, setUseLocalDiffOps] = useState(false);
 
   const showToast = useCallback((message: string) => {
     setToast({ message });
@@ -131,6 +134,13 @@ export default function ImageReviewPage() {
           label_font_size: a.label_font_size,
         })),
       );
+
+      // Immediately use local annotations to compute diff for instant display
+      setUseLocalDiffOps(true);
+
+      // Async trigger backend rediff (doesn't block UI)
+      rediffImage(image.id).catch(console.error);
+
       // Reload image detail
       const updated = await getImageDetail(imageId);
       setImage(updated);
@@ -192,7 +202,24 @@ export default function ImageReviewPage() {
     return computeWordDiff(editedWords, refWords);
   }, [editingOcrText, refWords]);
 
-  const displayDiffOps = liveDiffOps ?? (image?.diff_result as DiffDisplayDiffOp[] | null);
+  // Compute display diff ops with priority: live OCR edit > local annotations (after save) > backend diff_result
+  const displayDiffOps = useMemo(() => {
+    // Priority 1: Live OCR text editing (while user types in OCR editor)
+    if (liveDiffOps) return liveDiffOps;
+
+    // Priority 2: Local annotations (immediately after save for instant feedback)
+    if (useLocalDiffOps && localAnnotations.length > 0 && ocrWords.length > 0) {
+      return annotationsToDiffOps(
+        localAnnotations,
+        image?.ocr_words ?? [],
+        task?.reference_words ?? [],
+      );
+    }
+
+    // Priority 3: Backend diff_result (default)
+    return image?.diff_result as DiffDisplayDiffOp[] | null;
+  }, [useLocalDiffOps, localAnnotations, liveDiffOps, image, task, ocrWords]);
+
   const isLivePreview = liveDiffOps !== null;
 
   // Hover highlight: which ref/ocr word index to highlight and with what color
