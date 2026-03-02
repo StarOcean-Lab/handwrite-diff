@@ -71,10 +71,66 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
   );
 }
 
+/**
+ * Find connected components of overlapping labels using union-find.
+ * Labels in the same component must all be adjusted together to resolve overlaps.
+ */
+function findOverlappingGroups(entries: LabelEntry[]): LabelEntry[][] {
+  const n = entries.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+
+  function find(x: number): number {
+    if (parent[x] !== x) {
+      parent[x] = find(parent[x]);
+    }
+    return parent[x];
+  }
+
+  function union(x: number, y: number) {
+    const px = find(x);
+    const py = find(y);
+    if (px !== py) {
+      parent[px] = py;
+    }
+  }
+
+  // Union all overlapping pairs
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const aRect: Rect = { ...entries[i].rect, y: entries[i].rect.y + entries[i].offsetY };
+      const bRect: Rect = { ...entries[j].rect, y: entries[j].rect.y + entries[j].offsetY };
+      if (rectsOverlap(aRect, bRect)) {
+        union(i, j);
+      }
+    }
+  }
+
+  // Group by parent
+  const groups = new Map<number, LabelEntry[]>();
+  for (let i = 0; i < n; i++) {
+    const p = find(i);
+    if (!groups.has(p)) {
+      groups.set(p, []);
+    }
+    groups.get(p)!.push(entries[i]);
+  }
+
+  return Array.from(groups.values());
+}
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
  * Compute y-offsets for annotation labels to prevent visual overlap.
+ *
+ * Uses a stable algorithm:
+ * 1. Find all overlapping groups (connected components) using union-find
+ * 2. For each group, compute the minimum offset needed to separate all labels
+ *
+ * This approach is stable because:
+ * - It doesn't depend on sort order
+ * - It resolves all overlaps in a group at once, not iteratively
+ * - The result is deterministic regardless of initial positions
  *
  * @param annotations Array of annotations (must have `_localId` field).
  * @returns Map from `_localId` to a negative y-offset (in px) to apply.
@@ -120,35 +176,24 @@ export function resolveOverlaps(
     };
   });
 
-  // Sort by y (top-most first), then x (left-to-right) for deterministic ordering
-  entries.sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x);
+  // Find all overlapping groups
+  const groups = findOverlappingGroups(entries);
 
-  // Greedy pass: for each pair, push the lower-priority (later) label upward
-  // Pinned labels participate in detection but never get shifted.
-  const MAX_ITERATIONS = 20; // safety cap to avoid infinite loops
-  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    let anyAdjusted = false;
+  // Process each group: distribute offsets evenly among non-pinned labels
+  for (const group of groups) {
+    // Skip if group has only one entry or all are pinned
+    const nonPinned = group.filter((e) => !e.pinned);
+    if (nonPinned.length <= 1) continue;
 
-    for (let i = 0; i < entries.length; i++) {
-      for (let j = i + 1; j < entries.length; j++) {
-        const a = entries[i];
-        const b = entries[j];
-        const aRect: Rect = { ...a.rect, y: a.rect.y + a.offsetY };
-        const bRect: Rect = { ...b.rect, y: b.rect.y + b.offsetY };
+    // Sort by y position to assign offsets from top to bottom
+    nonPinned.sort((a, b) => a.rect.y - b.rect.y);
 
-        if (rectsOverlap(aRect, bRect)) {
-          // Only shift if the later entry is not pinned
-          if (!b.pinned) {
-            const bboxHeight = bRect.height; // same as fontSize
-            const shift = -(bboxHeight + 4);
-            b.offsetY += shift;
-            anyAdjusted = true;
-          }
-        }
-      }
+    // Assign increasing negative offsets to separate each label
+    for (let i = 0; i < nonPinned.length; i++) {
+      const entry = nonPinned[i];
+      // Each label gets pushed further up: 0, -(h+4), -2*(h+4), ...
+      entry.offsetY = -(i * (entry.rect.height + 4));
     }
-
-    if (!anyAdjusted) break;
   }
 
   // Collect non-zero offsets (skip pinned — they always stay at 0)
