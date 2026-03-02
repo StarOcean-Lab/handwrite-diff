@@ -141,7 +141,7 @@ export default function ExportEditorModal({
   const tc = useTranslations("common");
 
   // Deep copy to avoid mutating parent state
-  const [annotations] = useState<Annotation[]>(() =>
+  const [localAnnotations, setLocalAnnotations] = useState<Annotation[]>(() =>
     JSON.parse(JSON.stringify(initialAnnotations)),
   );
   const [scaleFactor, setScaleFactor] = useState(1.0);
@@ -149,7 +149,6 @@ export default function ExportEditorModal({
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [imageSize, setImageSize] = useState({ w: 800, h: 600 });
-  const [localAnnotations, setLocalAnnotations] = useState<Annotation[]>(annotations);
 
   // Drawing tools state
   const [activeTool, setActiveTool] = useState<ToolType>("select");
@@ -181,7 +180,7 @@ export default function ExportEditorModal({
   }, []);
 
   const editor = useAnnotationEditor({
-    annotations,
+    annotations: localAnnotations,
     imageWidth: imageSize.w,
     imageHeight: imageSize.h,
     activeTool,

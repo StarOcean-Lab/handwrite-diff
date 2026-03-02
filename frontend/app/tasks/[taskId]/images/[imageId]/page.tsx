@@ -89,7 +89,7 @@ export default function ImageReviewPage() {
   }, []);
 
   const editor = useAnnotationEditor({
-    annotations: image?.annotations ?? [],
+    annotations: localAnnotations,
     imageWidth: imageSize.w,
     imageHeight: imageSize.h,
     activeTool,
@@ -442,7 +442,15 @@ export default function ImageReviewPage() {
           imageId={image.id}
           annotations={localAnnotations}
           imageLabel={image.label}
-          onClose={() => setShowExportModal(false)}
+          onClose={async (savedDraft: boolean) => {
+            setShowExportModal(false);
+            if (savedDraft) {
+              // Reload image data to reflect saved annotations
+              const updated = await getImageDetail(imageId);
+              setImage(updated);
+              setLocalAnnotations(updated.annotations);
+            }
+          }}
         />
       )}
 

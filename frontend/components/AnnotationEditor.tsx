@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { Annotation } from "@/lib/api";
 import { resolveOverlaps } from "@/lib/overlap";
 
@@ -255,6 +255,17 @@ export default function AnnotationEditor({
     past: [],
     future: [],
   });
+
+  // Sync with external serverAnnotations changes (e.g., after save or image switch)
+  const prevServerAnnotationsRef = useRef(serverAnnotations);
+  useEffect(() => {
+    const prev = prevServerAnnotationsRef.current;
+    // Compare by JSON string to detect actual changes
+    if (JSON.stringify(prev) !== JSON.stringify(serverAnnotations)) {
+      prevServerAnnotationsRef.current = serverAnnotations;
+      dispatch({ type: "SET", annotations: serverAnnotations.map(toLocal) });
+    }
+  }, [serverAnnotations]);
 
   // Drawing state
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
